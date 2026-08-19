@@ -49,6 +49,8 @@ Cancelling the initial file chooser or pressing `Esc` in the launcher exits Clip
 | `R` | Confirm and reload the current clip from a clean session state. |
 | `Left` / `J` | Back one frame. |
 | `Right` / `L` | Forward one frame. |
+| `1`–`9` | Jump evenly across the full source: `1` is the start, `5` the middle, and `9` the final frame. |
+| `Shift+1`–`Shift+9` | Jump to the equivalent position inside the selected In/Out range. |
 | `Up` / `Down` | Volume ±5%. |
 | `M` | Toggle mute. |
 | `Enter` / `E` | Export. |
@@ -59,7 +61,7 @@ Cancelling the initial file chooser or pressing `Esc` in the launcher exits Clip
 
 ### Timeline and preview
 
-On the timeline, click or drag to scrub, drag the In/Out handles to trim, scroll to pan, and use `Alt+wheel` or a precision-touchpad pinch to zoom around the pointer. Drag the timeline's top edge to resize it. Zooming in reveals progressively finer ruler markers down to individual frames.
+On the timeline, click or drag to scrub, drag the In/Out handles to trim, scroll to pan, and use `Alt+wheel` or a precision-touchpad pinch to zoom around the pointer. The playback cursor can move anywhere in the full source, including before In or after Out. Starting playback from outside the selected range still begins at In and stops at Out. Drag the timeline's top edge to resize it. Zooming in reveals progressively finer ruler markers down to individual frames.
 
 While dragging an In or Out handle, the preview temporarily shows that handle's frame. Releasing the handle saves the new trim point and returns the preview to the playback cursor, clamped inside the selected range if needed.
 

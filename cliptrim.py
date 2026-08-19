@@ -49,8 +49,6 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 BIN_DIR.mkdir(parents=True, exist_ok=True)
 
-# Keep Python libraries and child processes from falling back to the system
-# temp directory for any app-owned working data they create at runtime.
 tempfile.tempdir = str(TMP_DIR)
 os.environ["TMP"] = str(TMP_DIR)
 os.environ["TEMP"] = str(TMP_DIR)
@@ -98,8 +96,6 @@ CONFIG = {
         "zoom_multiplier": 2.0,
     },
 }
-
-# Visual configuration stays separate from normal behavior settings.
 # Color values use #RRGGBB. Opacity values are 0-255.
 THEME = {
     "app": {
@@ -141,7 +137,6 @@ THEME = {
 HANDLE_W = int(THEME["timeline"]["handle_width"])
 SIDE_PAD = HANDLE_W * 2
 
-# Internal resolved colors. CONFIG and THEME above are the user-facing blocks.
 APP_BACKGROUND = QColor(THEME["app"]["background"])
 PRIMARY_TEXT = QColor(THEME["app"]["text"])
 SECONDARY_TEXT = QColor(THEME["app"]["text_dim"])
@@ -161,9 +156,9 @@ SCRUB_CACHE_MAX_FPS = 30.0
 SCRUB_CACHE_MAX_FRAMES = 9000
 SCRUB_RAM_MAX_BYTES = 48 * 1024 * 1024
 
-# Persistent per-file trim state. On Windows this is stored in an NTFS
-# alternate data stream attached to the video itself, so it is invisible in
-# Explorer and does not require rewriting/remuxing the media payload.
+
+
+
 TRIM_METADATA_STREAM = "ClipTrim.TrimState"
 TRIM_METADATA_VERSION = 1
 
@@ -223,8 +218,8 @@ def remove_file(path: Path, context: str):
 
 
 def _prepare_temp_run_dir() -> Path:
-    # Everything inside .tmp is intentionally disposable. Clear leftovers
-    # from a prior crash, then isolate this process in a unique run directory.
+
+
     try:
         log(f"Preparing app temp root: {TMP_DIR}")
         TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -266,10 +261,10 @@ FFPROBE = find_binary("ffprobe")
 
 
 def run_hidden(args: list[str], **kwargs):
-    # Nuitka's windows-console-mode=attach intentionally has no console when
-    # launched from Explorer. Never inherit stdin in that situation because
-    # Windows may expose an invalid console handle and subprocess can fail with
-    # WinError 6. DEVNULL is valid both with and without an attached console.
+
+
+
+
     kwargs.setdefault("stdin", subprocess.DEVNULL)
     if os.name == "nt":
         kwargs.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
@@ -316,8 +311,8 @@ class MediaInfo:
 
     @property
     def frame_count(self) -> int:
-        # Timeline frames belong to the VIDEO stream. Container duration can be
-        # a few frames longer because of audio padding, especially with WebM/Opus.
+
+
         return max(1, int(math.ceil(self.video_duration * self.fps - 1e-6)))
 
 
@@ -331,8 +326,8 @@ def _frame_index_for_time(t: float, info: MediaInfo) -> int:
 
 
 def _out_frame_index_for_boundary(out_time: float, info: MediaInfo) -> int:
-    # out_time is stored internally as an EXCLUSIVE boundary. The persistent
-    # value is the final INCLUDED frame, matching what the Out handle shows.
+
+
     fps = max(info.fps, 1e-6)
     frame = int(math.floor(max(0.0, out_time) * fps - 1e-6))
     return max(0, min(info.frame_count - 1, frame))
@@ -447,7 +442,7 @@ def write_embedded_trim_frames(path: str, info: MediaInfo, in_time: float, out_t
 def trim_frames_to_times(info: MediaInfo, in_frame: int, out_frame: int) -> tuple[float, float]:
     fps = max(info.fps, 1e-6)
     in_time = in_frame / fps
-    # Restore the internal exclusive Out boundary from the final included frame.
+
     out_time = min(info.duration, (out_frame + 1) / fps)
     if out_time <= in_time:
         out_time = min(info.duration, in_time + info.frame_duration)
@@ -633,7 +628,7 @@ class ExportWorker(QObject):
                 args += ["-c:v", "copy"]
                 mode_parts.append("video copied")
             else:
-                # ProRes 422 HQ is fast to decode/edit in Premiere and avoids another delivery-codec generation.
+
                 args += ["-c:v", "prores_ks", "-profile:v", "3", "-vendor", "apl0"]
                 if self.info.pix_fmt and "10" in self.info.pix_fmt:
                     args += ["-pix_fmt", "yuv422p10le"]
@@ -660,7 +655,7 @@ class ExportWorker(QObject):
             args += ["-map_metadata", "0", "-avoid_negative_ts", "make_zero", str(temp_output)]
             cp = run_hidden(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
             if cp.returncode:
-                # Some codecs technically fit MOV but can still fail to mux. Fall back to an all-Premiere-native transcode.
+
                 args = [
                     FFMPEG,
                     "-hide_banner",
@@ -758,9 +753,9 @@ class ScrubCacheWorker(QObject):
             return
         try:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            # Small JPEG proxy frames are cheap to decode and random-access.
-            # Keep ffmpeg deliberately low-priority / low-thread-count so cache
-            # generation never competes aggressively with playback or the UI.
+
+
+
             vf = (
                 f"fps={self.cache_fps:.8f},"
                 f"scale=w='min({SCRUB_CACHE_MAX_SIDE},iw)':"
@@ -838,8 +833,8 @@ class ScrubCacheWorker(QObject):
 class VideoCanvas(QGraphicsView):
     """Video preview transformed as one graphics item, never resized as a video output."""
 
-    # Exactly 4x the previous preview zoom sensitivity. All zoom paths operate
-    # in logarithmic space so equal input in/out produces reciprocal scaling.
+
+
     PIXEL_ZOOM_GAIN = 0.0072
     ANGLE_ZOOM_GAIN = 0.0018
     NATIVE_ZOOM_GAIN = 1.8
@@ -875,8 +870,8 @@ class VideoCanvas(QGraphicsView):
         self.dragging = False
         self.last_mouse = QPointF()
 
-        # Precision-touchpad pinch streams can arrive far faster than the screen
-        # can repaint. Collapse packets and update at at most 120 Hz.
+
+
         self._pending_log_zoom = 0.0
         self._pending_zoom_pos = QPointF()
         self._zoom_timer = QTimer(self)
@@ -889,8 +884,8 @@ class VideoCanvas(QGraphicsView):
         self.source_w = max(1, int(width))
         self.source_h = max(1, int(height))
         self.has_media = True
-        # The actual multimedia output remains at this fixed logical source size.
-        # Preview zoom changes only this graphics item's transform afterward.
+
+
         self.video_item.setSize(QSizeF(self.source_w, self.source_h))
         self.reset_view()
 
@@ -922,9 +917,9 @@ class VideoCanvas(QGraphicsView):
         h = self.source_h * scale
         center = QPointF(vw / 2.0 + self.pan.x(), vh / 2.0 + self.pan.y())
 
-        # Scene coordinates intentionally match viewport pixels 1:1. This keeps
-        # all zoom/pan math floating-point and avoids QGraphicsView scrollbar
-        # quantization, which otherwise shows up as pinch jitter.
+
+
+
         self.scene_obj.setSceneRect(0.0, 0.0, vw, vh)
         transform = QTransform()
         transform.scale(scale, scale)
@@ -963,14 +958,14 @@ class VideoCanvas(QGraphicsView):
         self._pending_log_zoom = 0.0
         self.zoom = 1.0
         self.pan = QPointF(0, 0)
-        # Because this canvas occupies the entire editor surface, reset means
-        # centered on the actual window, including the area behind the timeline.
+
+
         self._layout_video()
 
     def pan_by_pixels(self, delta: QPointF):
         if not self.has_media:
             return
-        # No axis selection, no x+y combination, no dominant-axis threshold.
+
         self.pan += QPointF(delta.x(), delta.y())
         self._layout_video()
 
@@ -999,9 +994,9 @@ class VideoCanvas(QGraphicsView):
         if abs(new_zoom - old_zoom) < 1e-8:
             return
 
-        # Keep the image point under the gesture fixed under the gesture while
-        # changing only the graphics transform. The media backend never sees a
-        # new output resolution here.
+
+
+
         ratio = new_zoom / old_zoom
         center = QPointF(self.viewport().width() / 2.0, self.viewport().height() / 2.0)
         self.pan = (self.pan + (center - pos)) * ratio - (center - pos)
@@ -1024,7 +1019,7 @@ class VideoCanvas(QGraphicsView):
         angle = e.angleDelta()
 
         if mods & (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.ControlModifier):
-            # Do not double-apply a native pinch and its synthesized Ctrl+wheel.
+
             if (
                 mods & Qt.KeyboardModifier.ControlModifier
                 and (self._native_zoom_active or time.monotonic() < self._native_zoom_until)
@@ -1053,8 +1048,8 @@ class VideoCanvas(QGraphicsView):
                 log_factor = raw * self.ANGLE_ZOOM_GAIN * multiplier
             self._queue_zoom(log_factor, e.position())
         else:
-            # Qt normally reports two-finger touchpad scrolling as QWheelEvent.
-            # Consume both components independently, exactly as supplied.
+
+
             if not pixel.isNull():
                 dx = float(pixel.x())
                 dy = float(pixel.y())
@@ -1087,9 +1082,9 @@ class VideoCanvas(QGraphicsView):
                 )
                 e.accept()
                 return True
-            # Intentionally ignore PanNativeGesture. Qt documents ordinary
-            # two-finger touchpad movement as wheel events; using that single
-            # path prevents a second gesture layer from axis-guiding the pan.
+
+
+
         return super().event(e)
 
     def mousePressEvent(self, e: QMouseEvent):
@@ -1159,8 +1154,8 @@ class Timeline(QWidget):
 
     @property
     def track_top(self):
-        # The ruler is an overlay on top of the clip instead of consuming its
-        # own vertical row. The actual timeline/thumbnail starts at y=0.
+
+
         return 0
 
     @property
@@ -1169,9 +1164,9 @@ class Timeline(QWidget):
 
     @property
     def frame_origin_x(self) -> float:
-        # time_to_x() maps VIDEO FRAME positions, not handle centers.
-        # At full-fit, frame 0 is therefore exactly on the inner edge of
-        # the left handle and duration is on the inner edge of the right.
+
+
+
         return SIDE_PAD + self.half_handle
 
     def full_last_frame_index(self) -> int:
@@ -1199,8 +1194,8 @@ class Timeline(QWidget):
             return 1.0
         w = self.width() if width is None else width
         available = max(1.0, float(w) - 2.0 * SIDE_PAD - HANDLE_W)
-        # Fit the visible VIDEO-frame span, not an audio/container tail. Frame 0
-        # and the final real video frame therefore land on the two inner edges.
+
+
         visual_span = max(self.full_last_frame_time(), self.info.frame_duration)
         return available / visual_span
 
@@ -1222,30 +1217,34 @@ class Timeline(QWidget):
         self.update()
 
     def playhead_bounds(self) -> tuple[float, float]:
+        """Return the playable bounds of the selected In/Out range."""
         if not self.info:
             return 0.0, 0.0
         first = self.in_time
         last = self.last_frame_before(self.out_time)
         return first, max(first, last)
 
+    def full_playhead_bounds(self) -> tuple[float, float]:
+        """Return every valid source-frame position available to the cursor."""
+        if not self.info:
+            return 0.0, 0.0
+        return 0.0, self.full_last_frame_time()
+
     def playhead_to_x(self, t: float) -> float:
         if not self.info:
             return self.frame_origin_x
-        # Never special-case the final frame. Every frame uses the exact same
-        # frame/time mapping, so Left/Right always moves exactly one marker.
         return self.time_to_x(self.clamp_playhead_time(t))
 
     def clamp_playhead_time(self, t: float) -> float:
         if not self.info:
             return 0.0
-        first, last = self.playhead_bounds()
+        first, last = self.full_playhead_bounds()
         return max(first, min(last, frame_snap(t, self.info)))
 
     def set_playhead(self, t: float):
         if not self.info:
             return
         self.playhead = self.clamp_playhead_time(t)
-        # Do not fight a pinch/pan gesture with automatic playhead scrolling.
         if time.monotonic() >= self._manual_view_until:
             self.ensure_visible(self.playhead)
         self.update()
@@ -1266,7 +1265,7 @@ class Timeline(QWidget):
         self.scroll_px = max(0.0, min(self.max_scroll(), self.scroll_px))
 
     def time_to_x(self, t: float) -> float:
-        # IMPORTANT: this is the frame coordinate. Handles sit OUTSIDE it.
+
         return self.frame_origin_x + t * self.pps - self.scroll_px
 
     def x_to_time(self, x: float) -> float:
@@ -1278,8 +1277,6 @@ class Timeline(QWidget):
         return self.time_to_x(self.in_time) - self.half_handle
 
     def out_handle_center_x(self) -> float:
-        # The inner edge represents the final INCLUDED video frame. out_time is
-        # still stored as the exclusive edit boundary used for export.
         return self.time_to_x(self.playhead_bounds()[1]) + self.half_handle
 
     def ensure_visible(self, t: float):
@@ -1339,7 +1336,6 @@ class Timeline(QWidget):
         nominal_fps = max(1, int(round(self.info.fps)))
         total_seconds, frame = divmod(max(0, int(frame_index)), nominal_fps)
         minutes, seconds = divmod(total_seconds, 60)
-        # Whole-second labels do not need a redundant ;00 suffix.
         if frame == 0:
             return f"{minutes:02}:{seconds:02}"
         return f"{minutes:02}:{seconds:02};{frame:02}"
@@ -1379,8 +1375,6 @@ class Timeline(QWidget):
         self._last_width = max(1, self.width())
         super().resizeEvent(e)
 
-    # Internal baseline sensitivities. User-facing zoom behavior is controlled
-    # by CONFIG at the top of the file.
     _TIMELINE_WHEEL_ZOOM_BASE_GAIN = 0.0018
     _TIMELINE_NATIVE_PINCH_BASE_GAIN = 1.8
 
@@ -1399,9 +1393,9 @@ class Timeline(QWidget):
         mods = e.modifiers()
 
         if mods & (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.ControlModifier):
-            # Qt can deliver a Windows precision-touchpad pinch as either a
-            # native zoom gesture or a synthesized Ctrl+wheel stream. Keep both
-            # paths tied to the same user-facing pinch multiplier.
+
+
+
             if mods & Qt.KeyboardModifier.ControlModifier and time.monotonic() - self._last_native_zoom < 0.08:
                 e.accept()
                 return
@@ -1461,14 +1455,6 @@ class Timeline(QWidget):
             return
         p.setClipRect(self.rect())
 
-        # time_to_x() is the actual frame coordinate. Handle centers are
-        # deliberately half a handle-width outside these boundaries:
-        #
-        #     |fvvvvvvvvvl|
-        #      ^         ^
-        #      In frame  Out boundary / last-frame side
-        #
-        # This prevents frame 0 and the playhead from living underneath a handle.
         track_left = self.time_to_x(0)
         track_right = self.time_to_x(self.full_last_frame_time())
         selected_left = self.time_to_x(self.in_time)
@@ -1483,7 +1469,7 @@ class Timeline(QWidget):
         if selected_right > selected_left:
             p.fillRect(QRectF(selected_left, self.track_top, selected_right - selected_left, track_h), TIMELINE_SELECTED_RANGE_BACKGROUND)
 
-        # Thumbnail follows the In point, preserves aspect ratio, and is clipped at Out.
+
         if not self.thumbnail.isNull() and selected_right > selected_left:
             h = max(1.0, track_h)
             w = h * self.thumbnail.width() / max(1, self.thumbnail.height())
@@ -1498,7 +1484,6 @@ class Timeline(QWidget):
                 )
                 p.fillRect(QRectF(selected_left, self.track_top, draw_w, h), QColor(0, 0, 0, THEME["timeline"]["thumbnail_darkening"]))
 
-        # Trimmed-away footage stays present, just dimmed. Handles form the boundary.
         before_right = selected_left
         after_left = selected_right
         if before_right > track_left:
@@ -1506,8 +1491,6 @@ class Timeline(QWidget):
         if track_right > after_left:
             p.fillRect(QRectF(after_left, self.track_top, track_right - after_left, track_h), TIMELINE_TRIMMED_AREA_OVERLAY)
 
-        # Volume line: 0 at the final drawable pixel, 100 one pixel below the
-        # marker ribbon so it never touches or visually merges with the overlay.
         vol = 0 if self.muted else self.volume
         volume_top_y = RULER_H + 1
         volume_bottom_y = max(float(volume_top_y), float(self.height() - 1))
@@ -1515,13 +1498,8 @@ class Timeline(QWidget):
         p.setPen(QPen(TIMELINE_VOLUME_LINE, 1))
         p.drawLine(QPointF(max(track_left, -10000), vol_y), QPointF(min(track_right, self.width() + 10000), vol_y))
 
-        # The ruler is a translucent overlay on top of the clip rather than a
-        # separate row. This keeps the timeline vertically compact while still
-        # giving the ticks/labels enough contrast over thumbnails.
         p.fillRect(QRectF(0, 0, self.width(), RULER_H), QColor(0, 0, 0, THEME["timeline"]["markers"]["ribbon_opacity"]))
 
-        # Small and large markers are drawn independently so a large marker never
-        # disappears merely because it is not an exact multiple of a sub-marker.
         big_frames, small_frames = self.marker_frame_intervals()
         full_last_frame = self.full_last_frame_index()
         start_frame = max(0, int(math.floor(self.x_to_time(0) * self.info.fps)) - 2)
@@ -1536,9 +1514,6 @@ class Timeline(QWidget):
             p.drawLine(QPointF(x, RULER_H), QPointF(x, RULER_H - 8))
             frame += small_frames
 
-        # Always include the true first/last video frames as large endpoint
-        # markers. Internal large-marker labels are pixel-centered on their tick.
-        # Endpoint labels point inward so they cannot overflow the timeline.
         big_marker_frames = {0, full_last_frame}
         first_big = max(0, (start_frame // big_frames) * big_frames)
         frame = first_big
@@ -1547,7 +1522,6 @@ class Timeline(QWidget):
             frame += big_frames
 
         font_metrics = p.fontMetrics()
-        # Keep a couple pixels of breathing room between ruler text and ticks.
         label_top = 0.0
         label_baseline = label_top + font_metrics.ascent()
         for frame in sorted(big_marker_frames):
@@ -1560,18 +1534,14 @@ class Timeline(QWidget):
             text = self.format_tick_frame(frame)
             text_w = float(font_metrics.horizontalAdvance(text))
             if frame == 0:
-                # First character begins immediately to the right of the marker.
                 text_x = x + 1.0
             elif frame == full_last_frame:
-                # Last character ends immediately to the left of the marker.
                 text_x = x - text_w - 1.0
             else:
-                # Exact pixel center of the complete rendered label on the tick.
                 text_x = x - text_w / 2.0
             p.setPen(TIMELINE_MARKER_TEXT)
             p.drawText(QPointF(text_x, label_baseline), text)
 
-        # Clip boundaries and movable handles.
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(TIMELINE_TRIM_HANDLE)
         handle_top = self.track_top
@@ -1579,7 +1549,6 @@ class Timeline(QWidget):
         p.drawRoundedRect(QRectF(xi - half_handle, handle_top, HANDLE_W, handle_h), 2, 2)
         p.drawRoundedRect(QRectF(xo - half_handle, handle_top, HANDLE_W, handle_h), 2, 2)
 
-        # Playhead can be bright because it moves.
         xp = self.playhead_to_x(self.playhead)
         p.setPen(QPen(TIMELINE_PLAYHEAD, 1))
         p.drawLine(QPointF(xp, 0), QPointF(xp, self.height()))
@@ -1612,8 +1581,6 @@ class Timeline(QWidget):
         else:
             self.drag_mode = "playhead"
             t = self.clamp_playhead_time(self.x_to_time(x))
-            # Scrubbing is visually immediate. The editor coalesces the expensive
-            # decoder seeks separately so mouse movement never waits on playback.
             self.playhead = t
             self.update()
             self.scrubStarted.emit(t)
@@ -1629,7 +1596,6 @@ class Timeline(QWidget):
             return
         if self.drag_mode in {"in", "out"}:
             handle_center_x = e.position().x() - self.drag_offset
-            # Convert the dragged handle CENTER back to its INNER frame boundary.
             boundary_x = (
                 handle_center_x + self.half_handle
                 if self.drag_mode == "in"
@@ -1644,8 +1610,8 @@ class Timeline(QWidget):
                 self.in_time = t
                 self.inChanged.emit(t, False)
             else:
-                # The handle's INNER edge is the final included frame position.
-                # Store the edit Out as the following exclusive frame boundary.
+
+
                 last_frame_t = max(t, self.in_time)
                 t = min(self.info.duration, last_frame_t + fd)
                 t = max(t, self.in_time + fd)
@@ -1869,10 +1835,10 @@ class MainWindow(QMainWindow):
         self.export_worker: ExportWorker | None = None
         self._fullscreen = False
 
-        # J/L and Left/Right share transport behavior. K acts as a held slow-
-        # shuttle modifier, but still toggles ordinary playback when tapped by
-        # itself. Reverse shuttle is timer-driven because the Windows Qt media
-        # backend does not reliably support negative playback rates.
+
+
+
+
         self._pressed_transport_keys: set[int] = set()
         self._pressed_direction_keys: list[int] = []
         self._k_used_for_shuttle = False
@@ -1885,10 +1851,10 @@ class MainWindow(QMainWindow):
         self._reverse_shuttle_last_frame = -1
         self._handle_preview_return_time: float | None = None
 
-        # Scrubbing uses a low-resolution JPEG proxy generated in the background.
-        # The proxy lives on disk, while recently touched frames are decoded into
-        # a bounded RAM LRU. The full-quality media player only performs the final
-        # exact seek after the drag ends.
+
+
+
+
         self._scrubbing = False
         self._resume_after_scrub = False
         self._resume_pending = False
@@ -1950,9 +1916,9 @@ class MainWindow(QMainWindow):
         top_l.addStretch(1)
         top_l.addWidget(self.time_label)
 
-        # Playback and timeline are sibling layout regions. The timeline is not
-        # parented into the playback surface, so neither can ever paint over or
-        # geometrically overlap the other.
+
+
+
         self.playback_surface = PlaybackSurface(self.canvas, self.top_overlay)
         root = QWidget()
         editor_layout = QVBoxLayout(root)
@@ -2075,8 +2041,8 @@ class MainWindow(QMainWindow):
     def persist_trim_metadata(self):
         if not self.info:
             return
-        # Keep the in-memory state synchronized even if persistent metadata is
-        # unavailable on this filesystem.
+
+
         self.states[self.info.path] = (
             self.timeline.in_time,
             self.timeline.out_time,
@@ -2113,7 +2079,7 @@ class MainWindow(QMainWindow):
             volume, muted = self.timeline.volume, self.timeline.muted
         else:
             volume, muted = old_state[2], old_state[3]
-        # Session state must not override the requested fresh trim range.
+
         self.states[path] = (0.0, self.info.duration, volume, muted)
         self.load_current_file(ignore_embedded_trim=True, force_reload=True)
 
@@ -2239,10 +2205,10 @@ class MainWindow(QMainWindow):
         log(f"Scrub cache QThread generation {generation} started")
 
     def _on_scrub_cache_done(self, ok: bool, message: str, generation: int, cache_dir: str):
-        # IMPORTANT: do not release the QThread/worker references here. The worker
-        # emits this signal before the QThread has necessarily finished shutting
-        # down. Dropping the last Python wrapper for a running QThread can hard
-        # abort the process (QThread destroyed while thread is still running).
+
+
+
+
         cache_path = Path(cache_dir)
         log(
             f"Scrub cache done signal received: generation={generation}, ok={ok}, "
@@ -2300,8 +2266,8 @@ class MainWindow(QMainWindow):
         if not self._scrub_cache_dir or self._scrub_cache_fps <= 0:
             return None
         index = max(0, int(round(t * self._scrub_cache_fps)))
-        # Frame timing can differ by one image around odd source timestamps.
-        # Prefer the exact proxy frame, then the nearest completed neighbour.
+
+
         candidates = (index, index - 1, index + 1, index - 2, index + 2)
         for candidate in candidates:
             if candidate < 0:
@@ -2351,8 +2317,8 @@ class MainWindow(QMainWindow):
             self.canvas.set_scrub_frame(image)
             return
 
-        # Cache generation may not have reached this part of the clip yet.
-        # Fall back to a coalesced full decoder seek rather than blocking the UI.
+
+
         self.canvas.clear_scrub_frame()
         ms = int(round(target * 1000.0))
         if ms != self._last_scrub_seek_ms:
@@ -2364,10 +2330,10 @@ class MainWindow(QMainWindow):
         if self._scrub_last_motion_t is not None and self._scrub_last_motion_wall is not None:
             wall_dt = max(1e-4, now - self._scrub_last_motion_wall)
             media_speed = abs(target - self._scrub_last_motion_t) / wall_dt
-            # 1x media-speed scrub -> 60 Hz; 4x -> 30 Hz; 16x+ -> 15 Hz.
+
             desired_hz = max(15.0, min(60.0, 60.0 / math.sqrt(max(1.0, media_speed))))
-            # Mild smoothing prevents timer cadence from oscillating when a
-            # touchpad reports uneven motion packets.
+
+
             self._scrub_velocity = self._scrub_velocity * 0.65 + media_speed * 0.35
             smoothed_hz = max(15.0, min(60.0, 60.0 / math.sqrt(max(1.0, self._scrub_velocity))))
             desired_hz = (desired_hz + smoothed_hz) * 0.5
@@ -2412,9 +2378,9 @@ class MainWindow(QMainWindow):
         self._scrub_timer.stop()
         target = frame_snap(t, self.info)
         self._scrub_target = target
-        # Keep the low-res proxy visible while the original decoder performs
-        # the one full-quality exact seek. It disappears only after that target
-        # arrives, so release does not flash an old frame underneath.
+
+
+
         image = self._scrub_cache_image(target)
         if image is not None:
             self.canvas.set_scrub_frame(image)
@@ -2432,9 +2398,9 @@ class MainWindow(QMainWindow):
             self._resume_after_scrub = False
             self._resume_pending = True
         if already_at_target:
-            # Handle drags return to the pre-drag cursor. When every preview
-            # frame came from cache, the full-quality player may already be at
-            # that exact cursor and therefore emit no new positionChanged.
+
+
+
             self._scrub_settle_ms = None
             self._pending_proxy_hide_ms = None
             if image is not None:
@@ -2497,9 +2463,9 @@ class MainWindow(QMainWindow):
         if not self.info:
             return 0.0
 
-        # Out is an exclusive boundary. Also clamp it to the actual video-stream
-        # duration because containers commonly have audio padding that extends
-        # beyond the final video frame (WebM/Opus is a common example).
+
+
+
         return self.timeline.playhead_bounds()[1]
 
     def _hold_on_last_frame(self, reason: str):
@@ -2513,9 +2479,9 @@ class MainWindow(QMainWindow):
         self._resume_after_scrub = False
         self.player.pause()
 
-        # Do not seek to Out itself. If Out is the source end, that can put Qt
-        # into EndOfMedia with no drawable video frame and produce a black flash.
-        # Re-seeking the final real frame keeps the video surface populated.
+
+
+
         if abs(self.player.position() - last_ms) > 1:
             self.player.setPosition(last_ms)
         self.timeline.set_playhead(last_t)
@@ -2529,8 +2495,8 @@ class MainWindow(QMainWindow):
     def on_position(self, ms: int):
         if not self.info:
             return
-        # While dragging, the mouse owns the timeline position. Ignore stale
-        # positionChanged callbacks from decoder seeks that are still completing.
+
+
         if self._scrubbing:
             return
         tolerance = max(2, int(round(750.0 / max(self.info.fps, 1e-6))))
@@ -2540,9 +2506,9 @@ class MainWindow(QMainWindow):
             self._scrub_settle_ms = None
         if self._pending_proxy_hide_ms is not None and abs(ms - self._pending_proxy_hide_ms) <= tolerance:
             self._pending_proxy_hide_ms = None
-            # positionChanged can arrive just before the newly decoded frame is
-            # actually painted. Leave the proxy over it for one tiny render
-            # window so release never flashes the previous full-res frame.
+
+
+
             self._proxy_hide_timer.start()
             if self._resume_pending:
                 self._resume_pending = False
@@ -2612,8 +2578,6 @@ class MainWindow(QMainWindow):
         t = frame_snap(self.player.position() / 1000.0, self.info)
         t = min(t, self.timeline.out_time - self.info.frame_duration)
         self.timeline.in_time = max(0.0, t)
-        if self.timeline.playhead < self.timeline.in_time:
-            self.seek(self.timeline.in_time)
         self.persist_trim_metadata()
         self.refresh_thumbnail(self.timeline.in_time)
         self.timeline.update()
@@ -2625,9 +2589,6 @@ class MainWindow(QMainWindow):
         t = frame_snap(self.player.position() / 1000.0, self.info)
         t = max(t, self.timeline.in_time)
         self.timeline.out_time = min(self.info.duration, t + self.info.frame_duration)
-        _, last = self.timeline.playhead_bounds()
-        if self.timeline.playhead > last:
-            self.seek(last)
         self.timeline.update()
         self.persist_trim_metadata()
 
@@ -2635,11 +2596,11 @@ class MainWindow(QMainWindow):
         if not self.info:
             return
         self.player.pause()
-        # The timeline keeps exact frame timestamps; QMediaPlayer.position() is
-        # integer milliseconds and can round across a frame boundary. Arrow-key
-        # stepping should therefore use the logical playhead, not backend time.
+
+
+
         fps = max(self.info.fps, 1e-6)
-        first, last = self.timeline.playhead_bounds()
+        first, last = self.timeline.full_playhead_bounds()
         first_frame = int(round(first * fps))
         last_frame = int(round(last * fps))
         current_frame = int(round(self.timeline.playhead * fps))
@@ -2650,11 +2611,11 @@ class MainWindow(QMainWindow):
         if not self.info:
             return
         self.player.pause()
-        # Use the logical timeline position so integer-millisecond backend
-        # rounding cannot make the mirrored arrow/J/L controls disagree.
+
+
         t = self.timeline.playhead
         target = self.timeline.snap_marker(t, large, direction=direction, exclude_current=True)
-        self.seek(self.timeline.clamp_playhead_time(target))
+        self.seek(target)
 
     def move_transport(self, direction: int, mods: Qt.KeyboardModifier):
         if mods & Qt.KeyboardModifier.ShiftModifier:
@@ -2663,6 +2624,32 @@ class MainWindow(QMainWindow):
             self.jump_marker(direction, False)
         else:
             self.step_frame(direction)
+
+    def jump_to_number_position(self, number: int, relative_to_trim: bool):
+        if not self.info or not 1 <= number <= 9:
+            return
+        self.player.pause()
+        if relative_to_trim:
+            first, last = self.timeline.playhead_bounds()
+        else:
+            first, last = self.timeline.full_playhead_bounds()
+        fraction = (number - 1) / 8.0
+        self.seek(first + (last - first) * fraction)
+
+    @staticmethod
+    def _number_for_key(key: int) -> int | None:
+        number_keys = {
+            Qt.Key.Key_1: 1,
+            Qt.Key.Key_2: 2,
+            Qt.Key.Key_3: 3,
+            Qt.Key.Key_4: 4,
+            Qt.Key.Key_5: 5,
+            Qt.Key.Key_6: 6,
+            Qt.Key.Key_7: 7,
+            Qt.Key.Key_8: 8,
+            Qt.Key.Key_9: 9,
+        }
+        return number_keys.get(key)
 
     @staticmethod
     def _direction_for_key(key: int) -> int:
@@ -2896,6 +2883,7 @@ class MainWindow(QMainWindow):
         key = e.key()
         mods = e.modifiers()
         direction = self._direction_for_key(key)
+        number_position = self._number_for_key(key)
 
         if not e.isAutoRepeat() and (direction or key == Qt.Key.Key_K):
             self._pressed_transport_keys.add(key)
@@ -2926,14 +2914,19 @@ class MainWindow(QMainWindow):
             if e.isAutoRepeat():
                 e.accept()
                 return
-            # Defer K's ordinary play/pause action until release so pressing a
-            # direction key while K is held can form a slow-shuttle chord.
+
+
             if self._active_direction_key() is not None:
                 self._update_shuttle_from_keys(mods)
         elif key in {Qt.Key.Key_I, Qt.Key.Key_BracketLeft}:
             self.set_in_from_playhead()
         elif key in {Qt.Key.Key_O, Qt.Key.Key_BracketRight}:
             self.set_out_from_playhead()
+        elif number_position is not None:
+            self.jump_to_number_position(
+                number_position,
+                bool(mods & Qt.KeyboardModifier.ShiftModifier),
+            )
         elif direction:
             if Qt.Key.Key_K in self._pressed_transport_keys or mods & Qt.KeyboardModifier.AltModifier:
                 if not e.isAutoRepeat():
@@ -3049,9 +3042,9 @@ def main():
     launcher.filesChosen.connect(open_editor)
     editor.backRequested.connect(back_to_launcher)
 
-    # Python only dispatches SIGINT while it gets opportunities to execute
-    # bytecode. A tiny Qt timer keeps Ctrl+C responsive while app.exec() owns
-    # the main loop. The handler itself only requests Qt shutdown.
+
+
+
     sigint_pump = QTimer()
     sigint_pump.setInterval(100)
     sigint_pump.timeout.connect(lambda: None)
