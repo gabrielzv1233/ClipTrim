@@ -26,9 +26,9 @@ Preview playback uses Windows Media Foundation through Qt. FFmpeg is used separa
 
 1. Run `ClipTrim.exe`.
 2. Drop a video onto the launcher, or click the drop area to choose one.
-3. Move the playback cursor and press `I` to set In.
-4. Move it again and press `O` to set Out.
-5. Press `Enter` to export.
+3. Move the playback cursor and press `I` or `[` to set In.
+4. Move it again and press `O` or `]` to set Out.
+5. Press `Enter` or `E` to export.
 
 You can also open a video directly and skip the launcher:
 
@@ -44,13 +44,14 @@ Cancelling the initial file chooser or pressing `Esc` in the launcher exits Clip
 | --- | --- |
 | `Space` | Play/pause. |
 | `K` | Play/pause when tapped; also used for slow shuttle playback. |
-| `I` / `O` | Set and immediately save In / Out. |
+| `I` / `[` | Set and immediately save In. |
+| `O` / `]` | Set and immediately save Out. |
 | `R` | Confirm and reload the current clip from a clean session state. |
 | `Left` / `J` | Back one frame. |
 | `Right` / `L` | Forward one frame. |
 | `Up` / `Down` | Volume ±5%. |
 | `M` | Toggle mute. |
-| `Enter` | Export. |
+| `Enter` / `E` | Export. |
 | `Esc` | Return to launcher. |
 | `H` | Toggle the editor HUD. |
 | `0` | Reset preview zoom and pan. |

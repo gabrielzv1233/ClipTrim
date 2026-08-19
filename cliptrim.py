@@ -2883,7 +2883,15 @@ class MainWindow(QMainWindow):
         self.top_overlay.setVisible(not self.top_overlay.isVisible())
 
     def keyPressEvent(self, e: QKeyEvent):
-        if e.isAutoRepeat() and e.key() in {Qt.Key.Key_I, Qt.Key.Key_O, Qt.Key.Key_M, Qt.Key.Key_H, Qt.Key.Key_R}:
+        if e.isAutoRepeat() and e.key() in {
+            Qt.Key.Key_I,
+            Qt.Key.Key_O,
+            Qt.Key.Key_BracketLeft,
+            Qt.Key.Key_BracketRight,
+            Qt.Key.Key_M,
+            Qt.Key.Key_H,
+            Qt.Key.Key_R,
+        }:
             return
         key = e.key()
         mods = e.modifiers()
@@ -2901,7 +2909,7 @@ class MainWindow(QMainWindow):
             and bool(mods & Qt.KeyboardModifier.AltModifier)
         ):
             self.toggle_fullscreen()
-        elif key in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+        elif key in {Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_E}:
             self.export_current()
         elif key == Qt.Key.Key_Escape:
             if not self.export_thread:
@@ -2922,9 +2930,9 @@ class MainWindow(QMainWindow):
             # direction key while K is held can form a slow-shuttle chord.
             if self._active_direction_key() is not None:
                 self._update_shuttle_from_keys(mods)
-        elif key == Qt.Key.Key_I:
+        elif key in {Qt.Key.Key_I, Qt.Key.Key_BracketLeft}:
             self.set_in_from_playhead()
-        elif key == Qt.Key.Key_O:
+        elif key in {Qt.Key.Key_O, Qt.Key.Key_BracketRight}:
             self.set_out_from_playhead()
         elif direction:
             if Qt.Key.Key_K in self._pressed_transport_keys or mods & Qt.KeyboardModifier.AltModifier:
