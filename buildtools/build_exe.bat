@@ -101,7 +101,7 @@ if not exist "%DIST%\runtime" (
 
 if exist "%STAGING%" rmdir /s /q "%STAGING%"
 
-for %%D in (bin config logs .tmp) do (
+for %%D in (bin config) do (
     if not exist "%DIST%\%%D" mkdir "%DIST%\%%D"
 ) 
 copy /y "buildtools\icon.ico" "%DIST%\icon.ico" >nul
