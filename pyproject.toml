@@ -1,0 +1,16 @@
+[project]
+name = "cliptrim"
+version = "0.5.2"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "gabrielzv1233", email = "77300296+gabrielzv1233@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "nuitka[all]>=4.1.3",
+    "pyside6>=6.11.2",
+]
+
+[tool.uv]
+package = false
