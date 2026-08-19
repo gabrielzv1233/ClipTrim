@@ -613,49 +613,15 @@ class ExportWorker(QObject):
                 raise RuntimeError("Export output cannot overwrite the source clip.")
 
             EXPORT_TEMP_DIR.mkdir(parents=True, exist_ok=True)
-            temp_output = EXPORT_TEMP_DIR / f"export-{uuid.uuid4().hex}.mov"
+            temp_output = EXPORT_TEMP_DIR / f"export-{uuid.uuid4().hex}.mp4"
 
             duration = max(self.info.frame_duration, self.end - self.start)
-            video_copyable = self.info.video_codec in {"h264", "hevc", "prores", "dnxhd", "mjpeg"}
-            audio_copyable = self.info.audio_codec in {None, "aac", "pcm_s16le", "pcm_s24le", "pcm_s32le", "alac"}
+            video_copyable = self.info.video_codec == "h264" and self.info.pix_fmt in {"yuv420p", "yuvj420p"}
+            audio_copyable = self.info.audio_codec in {None, "aac"}
             start_is_key = is_keyframe_at(self.info.path, self.start, self.info.fps)
+            copy_compatible_streams = video_copyable and audio_copyable and start_is_key
 
-            args = [FFMPEG, "-hide_banner", "-y", "-ss", f"{self.start:.9f}", "-i", self.info.path, "-t", f"{duration:.9f}"]
-            args += ["-map", "0:v:0", "-map", "0:a:0?"]
-            mode_parts = []
-
-            if video_copyable and start_is_key:
-                args += ["-c:v", "copy"]
-                mode_parts.append("video copied")
-            else:
-
-                args += ["-c:v", "prores_ks", "-profile:v", "3", "-vendor", "apl0"]
-                if self.info.pix_fmt and "10" in self.info.pix_fmt:
-                    args += ["-pix_fmt", "yuv422p10le"]
-                else:
-                    args += ["-pix_fmt", "yuv422p10le"]
-                for key, value in (
-                    ("-color_primaries", self.info.color_primaries),
-                    ("-color_trc", self.info.color_transfer),
-                    ("-colorspace", self.info.color_space),
-                ):
-                    if value and value not in {"unknown", "reserved"}:
-                        args += [key, value]
-                mode_parts.append("video → ProRes 422 HQ")
-
-            if self.info.audio_codec is None:
-                mode_parts.append("no audio")
-            elif audio_copyable:
-                args += ["-c:a", "copy"]
-                mode_parts.append("audio copied")
-            else:
-                args += ["-c:a", "pcm_s24le"]
-                mode_parts.append("audio → PCM 24-bit")
-
-            args += ["-map_metadata", "0", "-avoid_negative_ts", "make_zero", str(temp_output)]
-            cp = run_hidden(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
-            if cp.returncode:
-
+            def transcode_args() -> list[str]:
                 args = [
                     FFMPEG,
                     "-hide_banner",
@@ -671,21 +637,82 @@ class ExportWorker(QObject):
                     "-map",
                     "0:a:0?",
                     "-c:v",
-                    "prores_ks",
+                    "libx264",
+                    "-preset",
+                    "slow",
+                    "-crf",
+                    "10",
                     "-profile:v",
-                    "3",
-                    "-vendor",
-                    "apl0",
+                    "high",
                     "-pix_fmt",
-                    "yuv422p10le",
+                    "yuv420p",
+                    "-tag:v",
+                    "avc1",
+                    "-fps_mode",
+                    "passthrough",
                 ]
+                for key, value in (
+                    ("-color_primaries", self.info.color_primaries),
+                    ("-color_trc", self.info.color_transfer),
+                    ("-colorspace", self.info.color_space),
+                ):
+                    if value and value not in {"unknown", "reserved"}:
+                        args += [key, value]
                 if self.info.audio_codec:
-                    args += ["-c:a", "pcm_s24le"]
-                args += ["-map_metadata", "0", str(temp_output)]
+                    args += ["-c:a", "aac", "-profile:a", "aac_low", "-b:a", "320k"]
+                args += [
+                    "-map_metadata",
+                    "0",
+                    "-avoid_negative_ts",
+                    "make_zero",
+                    "-movflags",
+                    "+faststart",
+                    str(temp_output),
+                ]
+                return args
+
+            if copy_compatible_streams:
+                args = [
+                    FFMPEG,
+                    "-hide_banner",
+                    "-y",
+                    "-ss",
+                    f"{self.start:.9f}",
+                    "-i",
+                    self.info.path,
+                    "-t",
+                    f"{duration:.9f}",
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a:0?",
+                    "-c",
+                    "copy",
+                    "-tag:v",
+                    "avc1",
+                    "-map_metadata",
+                    "0",
+                    "-avoid_negative_ts",
+                    "make_zero",
+                    "-movflags",
+                    "+faststart",
+                    str(temp_output),
+                ]
+                mode_parts = ["video copied", "audio copied" if self.info.audio_codec else "no audio"]
+            else:
+                args = transcode_args()
+                mode_parts = ["video -> H.264 High (CRF 10)", "audio -> AAC-LC 320 kb/s" if self.info.audio_codec else "no audio"]
+
+            cp = run_hidden(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            if cp.returncode:
+                if not copy_compatible_streams:
+                    raise RuntimeError(cp.stderr.strip()[-2400:] or "FFmpeg export failed.")
+                log("Compatible stream-copy export failed; retrying with H.264/AAC transcode", "WARN")
+                args = transcode_args()
                 cp = run_hidden(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 if cp.returncode:
                     raise RuntimeError(cp.stderr.strip()[-2400:] or "FFmpeg export failed.")
-                mode_parts = ["video → ProRes 422 HQ", "audio → PCM 24-bit" if self.info.audio_codec else "no audio"]
+                mode_parts = ["video -> H.264 High (CRF 10)", "audio -> AAC-LC 320 kb/s" if self.info.audio_codec else "no audio"]
 
             try:
                 os.replace(temp_output, output_path)
@@ -2818,18 +2845,18 @@ class MainWindow(QMainWindow):
         downloads = Path.home() / "Downloads"
         if not downloads.is_dir():
             downloads = Path.home()
-        default_name = f"clipped_{Path(self.info.path).stem}.mov"
+        default_name = f"clipped_{Path(self.info.path).stem}.mp4"
         output, _ = QFileDialog.getSaveFileName(
             self,
             "Export clipped video",
             str(downloads / default_name),
-            "QuickTime MOV (*.mov)",
+            "MPEG-4 Video (*.mp4)",
         )
         if not output:
             return
         output_path = Path(output)
-        if output_path.suffix.lower() != ".mov":
-            output_path = output_path.with_suffix(".mov")
+        if output_path.suffix.lower() != ".mp4":
+            output_path = output_path.with_suffix(".mp4")
         output = str(output_path)
         print(f"Exporting {output}")
         self.export_thread = QThread(self)
@@ -2837,26 +2864,26 @@ class MainWindow(QMainWindow):
         self.export_worker.moveToThread(self.export_thread)
         self.export_thread.started.connect(self.export_worker.run)
 
-        def done(path: str, mode: str):
-            print(f"Saved {path} ({mode})")
-            self.export_thread.quit()
-            self.export_thread.wait()
-            self.export_thread.deleteLater()
-            self.export_thread = None
-            self.export_worker = None
-
-        def fail(message: str):
-            QMessageBox.critical(self, "Export failed", message)
-            print(f"Export failed: {message}", file=sys.stderr)
-            self.export_thread.quit()
-            self.export_thread.wait()
-            self.export_thread.deleteLater()
-            self.export_thread = None
-            self.export_worker = None
-
-        self.export_worker.finished.connect(done)
-        self.export_worker.failed.connect(fail)
+        self.export_worker.finished.connect(self._on_export_succeeded)
+        self.export_worker.failed.connect(self._on_export_failed)
+        self.export_worker.finished.connect(self.export_thread.quit)
+        self.export_worker.failed.connect(self.export_thread.quit)
+        self.export_worker.finished.connect(self.export_worker.deleteLater)
+        self.export_worker.failed.connect(self.export_worker.deleteLater)
+        self.export_thread.finished.connect(self._on_export_thread_finished)
+        self.export_thread.finished.connect(self.export_thread.deleteLater)
         self.export_thread.start()
+
+    def _on_export_succeeded(self, path: str, mode: str):
+        print(f"Saved {path} ({mode})")
+
+    def _on_export_failed(self, message: str):
+        QMessageBox.critical(self, "Export failed", message)
+        print(f"Export failed: {message}", file=sys.stderr)
+
+    def _on_export_thread_finished(self):
+        self.export_thread = None
+        self.export_worker = None
 
 
     def toggle_fullscreen(self):
