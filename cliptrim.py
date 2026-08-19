@@ -17,18 +17,11 @@ import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
 
-# Qt Multimedia defaults to its FFmpeg backend on Windows. On some Windows
-# systems that backend can crash inside FFmpeg/Media Foundation codec
-# initialization before Python gets a traceback. Qt officially supports the
-# native Windows Media Foundation backend as a compatibility fallback. Select
-# it before importing Qt Multimedia. External ffmpeg.exe/ffprobe.exe are still
-# used independently for probing, thumbnails, and export.
 if os.name == "nt":
     os.environ.setdefault("QT_MEDIA_BACKEND", "windows")
 
 from fractions import Fraction
 from pathlib import Path
-
 
 def _resolve_app_dir() -> Path:
     try:
@@ -36,7 +29,6 @@ def _resolve_app_dir() -> Path:
         return compiled_dir.parent if compiled_dir.name.casefold() == "runtime" else compiled_dir
     except NameError:
         return Path(__file__).resolve().parent
-
 
 APP_DIR = _resolve_app_dir()
 TMP_DIR = APP_DIR / ".tmp"
@@ -156,12 +148,8 @@ SCRUB_CACHE_MAX_FPS = 30.0
 SCRUB_CACHE_MAX_FRAMES = 9000
 SCRUB_RAM_MAX_BYTES = 48 * 1024 * 1024
 
-
-
-
 TRIM_METADATA_STREAM = "ClipTrim.TrimState"
 TRIM_METADATA_VERSION = 1
-
 
 def log(message: str, level: str = "INFO"):
     stamp = time.strftime("%H:%M:%S")
@@ -218,8 +206,6 @@ def remove_file(path: Path, context: str):
 
 
 def _prepare_temp_run_dir() -> Path:
-
-
     try:
         log(f"Preparing app temp root: {TMP_DIR}")
         TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -261,10 +247,6 @@ FFPROBE = find_binary("ffprobe")
 
 
 def run_hidden(args: list[str], **kwargs):
-
-
-
-
     kwargs.setdefault("stdin", subprocess.DEVNULL)
     if os.name == "nt":
         kwargs.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
@@ -311,12 +293,9 @@ class MediaInfo:
 
     @property
     def frame_count(self) -> int:
-
-
         return max(1, int(math.ceil(self.video_duration * self.fps - 1e-6)))
 
-
-
+    
 def _trim_metadata_path(path: str) -> str:
     return f"{path}:{TRIM_METADATA_STREAM}"
 
@@ -326,8 +305,6 @@ def _frame_index_for_time(t: float, info: MediaInfo) -> int:
 
 
 def _out_frame_index_for_boundary(out_time: float, info: MediaInfo) -> int:
-
-
     fps = max(info.fps, 1e-6)
     frame = int(math.floor(max(0.0, out_time) * fps - 1e-6))
     return max(0, min(info.frame_count - 1, frame))
@@ -780,9 +757,6 @@ class ScrubCacheWorker(QObject):
             return
         try:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-
-
-
             vf = (
                 f"fps={self.cache_fps:.8f},"
                 f"scale=w='min({SCRUB_CACHE_MAX_SIDE},iw)':"
@@ -856,12 +830,8 @@ class ScrubCacheWorker(QObject):
             )
 
 
-
 class VideoCanvas(QGraphicsView):
     """Video preview transformed as one graphics item, never resized as a video output."""
-
-
-
     PIXEL_ZOOM_GAIN = 0.0072
     ANGLE_ZOOM_GAIN = 0.0018
     NATIVE_ZOOM_GAIN = 1.8
@@ -897,8 +867,6 @@ class VideoCanvas(QGraphicsView):
         self.dragging = False
         self.last_mouse = QPointF()
 
-
-
         self._pending_log_zoom = 0.0
         self._pending_zoom_pos = QPointF()
         self._zoom_timer = QTimer(self)
@@ -911,8 +879,6 @@ class VideoCanvas(QGraphicsView):
         self.source_w = max(1, int(width))
         self.source_h = max(1, int(height))
         self.has_media = True
-
-
         self.video_item.setSize(QSizeF(self.source_w, self.source_h))
         self.reset_view()
 
@@ -943,9 +909,6 @@ class VideoCanvas(QGraphicsView):
         w = self.source_w * scale
         h = self.source_h * scale
         center = QPointF(vw / 2.0 + self.pan.x(), vh / 2.0 + self.pan.y())
-
-
-
 
         self.scene_obj.setSceneRect(0.0, 0.0, vw, vh)
         transform = QTransform()
@@ -985,8 +948,6 @@ class VideoCanvas(QGraphicsView):
         self._pending_log_zoom = 0.0
         self.zoom = 1.0
         self.pan = QPointF(0, 0)
-
-
         self._layout_video()
 
     def pan_by_pixels(self, delta: QPointF):
@@ -1020,9 +981,6 @@ class VideoCanvas(QGraphicsView):
         new_zoom = max(1.0, min(self.MAX_ZOOM, old_zoom * factor))
         if abs(new_zoom - old_zoom) < 1e-8:
             return
-
-
-
 
         ratio = new_zoom / old_zoom
         center = QPointF(self.viewport().width() / 2.0, self.viewport().height() / 2.0)
@@ -1075,8 +1033,6 @@ class VideoCanvas(QGraphicsView):
                 log_factor = raw * self.ANGLE_ZOOM_GAIN * multiplier
             self._queue_zoom(log_factor, e.position())
         else:
-
-
             if not pixel.isNull():
                 dx = float(pixel.x())
                 dy = float(pixel.y())
@@ -1109,8 +1065,6 @@ class VideoCanvas(QGraphicsView):
                 )
                 e.accept()
                 return True
-
-
 
         return super().event(e)
 
@@ -1181,8 +1135,6 @@ class Timeline(QWidget):
 
     @property
     def track_top(self):
-
-
         return 0
 
     @property
@@ -1191,9 +1143,6 @@ class Timeline(QWidget):
 
     @property
     def frame_origin_x(self) -> float:
-
-
-
         return SIDE_PAD + self.half_handle
 
     def full_last_frame_index(self) -> int:
@@ -1221,7 +1170,6 @@ class Timeline(QWidget):
             return 1.0
         w = self.width() if width is None else width
         available = max(1.0, float(w) - 2.0 * SIDE_PAD - HANDLE_W)
-
 
         visual_span = max(self.full_last_frame_time(), self.info.frame_duration)
         return available / visual_span
@@ -1420,9 +1368,6 @@ class Timeline(QWidget):
         mods = e.modifiers()
 
         if mods & (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.ControlModifier):
-
-
-
             if mods & Qt.KeyboardModifier.ControlModifier and time.monotonic() - self._last_native_zoom < 0.08:
                 e.accept()
                 return
@@ -1495,7 +1440,6 @@ class Timeline(QWidget):
             p.fillRect(QRectF(track_left, self.track_top, track_right - track_left, track_h), TIMELINE_FULL_CLIP_BACKGROUND)
         if selected_right > selected_left:
             p.fillRect(QRectF(selected_left, self.track_top, selected_right - selected_left, track_h), TIMELINE_SELECTED_RANGE_BACKGROUND)
-
 
         if not self.thumbnail.isNull() and selected_right > selected_left:
             h = max(1.0, track_h)
@@ -1637,8 +1581,6 @@ class Timeline(QWidget):
                 self.in_time = t
                 self.inChanged.emit(t, False)
             else:
-
-
                 last_frame_t = max(t, self.in_time)
                 t = min(self.info.duration, last_frame_t + fd)
                 t = max(t, self.in_time + fd)
@@ -1862,10 +1804,6 @@ class MainWindow(QMainWindow):
         self.export_worker: ExportWorker | None = None
         self._fullscreen = False
 
-
-
-
-
         self._pressed_transport_keys: set[int] = set()
         self._pressed_direction_keys: list[int] = []
         self._k_used_for_shuttle = False
@@ -1877,10 +1815,6 @@ class MainWindow(QMainWindow):
         self._reverse_shuttle_started_at = 0.0
         self._reverse_shuttle_last_frame = -1
         self._handle_preview_return_time: float | None = None
-
-
-
-
 
         self._scrubbing = False
         self._resume_after_scrub = False
@@ -1942,9 +1876,6 @@ class MainWindow(QMainWindow):
         top_l.setSpacing(0)
         top_l.addStretch(1)
         top_l.addWidget(self.time_label)
-
-
-
 
         self.playback_surface = PlaybackSurface(self.canvas, self.top_overlay)
         root = QWidget()
@@ -2232,10 +2163,6 @@ class MainWindow(QMainWindow):
         log(f"Scrub cache QThread generation {generation} started")
 
     def _on_scrub_cache_done(self, ok: bool, message: str, generation: int, cache_dir: str):
-
-
-
-
         cache_path = Path(cache_dir)
         log(
             f"Scrub cache done signal received: generation={generation}, ok={ok}, "
@@ -2294,7 +2221,6 @@ class MainWindow(QMainWindow):
             return None
         index = max(0, int(round(t * self._scrub_cache_fps)))
 
-
         candidates = (index, index - 1, index + 1, index - 2, index + 2)
         for candidate in candidates:
             if candidate < 0:
@@ -2344,8 +2270,6 @@ class MainWindow(QMainWindow):
             self.canvas.set_scrub_frame(image)
             return
 
-
-
         self.canvas.clear_scrub_frame()
         ms = int(round(target * 1000.0))
         if ms != self._last_scrub_seek_ms:
@@ -2359,7 +2283,6 @@ class MainWindow(QMainWindow):
             media_speed = abs(target - self._scrub_last_motion_t) / wall_dt
 
             desired_hz = max(15.0, min(60.0, 60.0 / math.sqrt(max(1.0, media_speed))))
-
 
             self._scrub_velocity = self._scrub_velocity * 0.65 + media_speed * 0.35
             smoothed_hz = max(15.0, min(60.0, 60.0 / math.sqrt(max(1.0, self._scrub_velocity))))
@@ -2406,8 +2329,6 @@ class MainWindow(QMainWindow):
         target = frame_snap(t, self.info)
         self._scrub_target = target
 
-
-
         image = self._scrub_cache_image(target)
         if image is not None:
             self.canvas.set_scrub_frame(image)
@@ -2425,8 +2346,6 @@ class MainWindow(QMainWindow):
             self._resume_after_scrub = False
             self._resume_pending = True
         if already_at_target:
-
-
 
             self._scrub_settle_ms = None
             self._pending_proxy_hide_ms = None
@@ -2490,9 +2409,6 @@ class MainWindow(QMainWindow):
         if not self.info:
             return 0.0
 
-
-
-
         return self.timeline.playhead_bounds()[1]
 
     def _hold_on_last_frame(self, reason: str):
@@ -2505,9 +2421,6 @@ class MainWindow(QMainWindow):
         self._resume_pending = False
         self._resume_after_scrub = False
         self.player.pause()
-
-
-
 
         if abs(self.player.position() - last_ms) > 1:
             self.player.setPosition(last_ms)
@@ -2522,7 +2435,6 @@ class MainWindow(QMainWindow):
     def on_position(self, ms: int):
         if not self.info:
             return
-
 
         if self._scrubbing:
             return
@@ -2624,8 +2536,6 @@ class MainWindow(QMainWindow):
             return
         self.player.pause()
 
-
-
         fps = max(self.info.fps, 1e-6)
         first, last = self.timeline.full_playhead_bounds()
         first_frame = int(round(first * fps))
@@ -2638,8 +2548,6 @@ class MainWindow(QMainWindow):
         if not self.info:
             return
         self.player.pause()
-
-
         t = self.timeline.playhead
         target = self.timeline.snap_marker(t, large, direction=direction, exclude_current=True)
         self.seek(target)
@@ -3068,8 +2976,6 @@ def main():
 
     launcher.filesChosen.connect(open_editor)
     editor.backRequested.connect(back_to_launcher)
-
-
 
 
     sigint_pump = QTimer()
