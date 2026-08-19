@@ -16,3 +16,4 @@ logs/
 config/
 assets/
 .tmp/
+bin/
