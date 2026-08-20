@@ -1,8 +1,19 @@
+<div align="center">
+
 # ClipTrim
 
-ClipTrim is a small, no-project video trimmer for Windows. Open a video, choose an In and Out frame, and export a broadly compatible `.mp4` without creating a project, media library, or sidecar session file.
+</div>
 
-The UI is built around a video preview and a precise, zoomable timeline. Common actions use single-key controls; modifier keys expose finer navigation, snapping, shuttle playback, and volume control.
+  ClipTrim is a small, no-project video trimmer for Windows. Open a video, choose an In and Out frame, and export a broadly compatible `.mp4` without creating a project, media library, or sidecar session file.  
+  The UI is built around a video preview and a precise, zoomable timeline. Common actions use single-key controls; modifier keys expose finer navigation, snapping, shuttle playback, and volume control.  
+
+<div align="center">
+  <a href="https://ko-fi.com/gabrielzv1233">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Donate on Ko-fi" width="350">
+  </a>
+</div>
+
+---
 
 ### Basic controls
 
@@ -26,6 +37,7 @@ The UI is built around a video preview and a precise, zoomable timeline. Common 
 | `H` | Toggle the editor HUD. |
 | `0` | Reset preview zoom and pan. |
 | `F11` / `Alt+Enter` | Toggle borderless fullscreen. |
+
 ## Requirements
 
 ### Packaged app
@@ -196,6 +208,8 @@ The planned configuration system will move these user-facing values into real fi
 - Constant-frame-rate media is the most predictable for exact frame stepping; variable-frame-rate media can be less exact.
 - Reverse shuttle is cache-backed stepping, while forward shuttle can use native playback-rate support.
 - Windows or Qt may axis-lock some precision-touchpad movement before ClipTrim receives it.
+
+--- 
 
 ## Developer guide
 
