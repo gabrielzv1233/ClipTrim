@@ -41,11 +41,6 @@ CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 BIN_DIR.mkdir(parents=True, exist_ok=True)
 
-tempfile.tempdir = str(TMP_DIR)
-os.environ["TMP"] = str(TMP_DIR)
-os.environ["TEMP"] = str(TMP_DIR)
-os.environ["TMPDIR"] = str(TMP_DIR)
-
 from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, QSizeF, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QFont, QImage, QKeyEvent, QMouseEvent, QNativeGestureEvent, QPainter, QPen, QPixmap, QPolygonF, QTransform, QWheelEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
@@ -148,6 +143,10 @@ SCRUB_CACHE_MAX_FPS = 30.0
 SCRUB_CACHE_MAX_FRAMES = 9000
 SCRUB_RAM_MAX_BYTES = 48 * 1024 * 1024
 
+MEDIA_PROBE_TIMEOUT_SECONDS = 30
+THUMBNAIL_TIMEOUT_SECONDS = 12
+KEYFRAME_PROBE_TIMEOUT_SECONDS = 15
+
 TRIM_METADATA_STREAM = "ClipTrim.TrimState"
 TRIM_METADATA_VERSION = 1
 
@@ -205,15 +204,79 @@ def remove_file(path: Path, context: str):
         log_exception(f"Failed to remove {context} {path}", exc)
 
 
+def _run_directory_pid(path: Path) -> int | None:
+    """Return the owner PID encoded in a ``run-<pid>-<id>`` directory."""
+    parts = path.name.split("-", 2)
+    if len(parts) != 3 or parts[0] != "run" or not parts[1].isdigit():
+        return None
+    try:
+        pid = int(parts[1])
+    except (ValueError, OverflowError):
+        return None
+    maximum_pid = 0xFFFFFFFF if os.name == "nt" else 0x7FFFFFFF
+    return pid if 0 < pid <= maximum_pid else None
+
+
+def _is_process_running(pid: int) -> bool:
+    """Conservatively report whether *pid* still identifies a live process."""
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        synchronize = 0x00100000
+        error_access_denied = 5
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        handle = kernel32.OpenProcess(synchronize, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == error_access_denied
+        try:
+            # WAIT_OBJECT_0 (zero) is the only definitive evidence that the
+            # process ended. Keep the directory on timeout or API failure.
+            return kernel32.WaitForSingleObject(handle, 0) != 0
+        finally:
+            kernel32.CloseHandle(handle)
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _remove_stale_temp_children(root: Path):
+    """Remove abandoned temp data without touching another live app instance."""
+    for child in root.iterdir():
+        owner_pid = _run_directory_pid(child) if child.is_dir() else None
+        if owner_pid is None:
+            log(f"Keeping unrecognized temp entry: {child}", "DEBUG")
+            continue
+        if _is_process_running(owner_pid):
+            log(f"Keeping temp directory owned by live process {owner_pid}: {child}", "DEBUG")
+            continue
+        remove_tree(child, "stale app temp directory")
+
+
 def _prepare_temp_run_dir() -> Path:
     try:
         log(f"Preparing app temp root: {TMP_DIR}")
         TMP_DIR.mkdir(parents=True, exist_ok=True)
-        for child in TMP_DIR.iterdir():
-            if child.is_dir():
-                remove_tree(child, "stale app temp directory")
-            else:
-                remove_file(child, "stale app temp file")
+        _remove_stale_temp_children(TMP_DIR)
         run_dir = TMP_DIR / f"run-{os.getpid()}-{uuid.uuid4().hex[:8]}"
         run_dir.mkdir(parents=True, exist_ok=True)
         log(f"App temp run directory: {run_dir}")
@@ -229,6 +292,10 @@ def _cleanup_temp_run_dir():
 
 
 TEMP_RUN_DIR = _prepare_temp_run_dir()
+tempfile.tempdir = str(TEMP_RUN_DIR)
+os.environ["TMP"] = str(TEMP_RUN_DIR)
+os.environ["TEMP"] = str(TEMP_RUN_DIR)
+os.environ["TMPDIR"] = str(TEMP_RUN_DIR)
 SCRUB_RUN_DIR = TEMP_RUN_DIR / "scrub"
 SCRUB_RUN_DIR.mkdir(parents=True, exist_ok=True)
 EXPORT_TEMP_DIR = TEMP_RUN_DIR / "exports"
@@ -420,22 +487,30 @@ def trim_frames_to_times(info: MediaInfo, in_frame: int, out_frame: int) -> tupl
     fps = max(info.fps, 1e-6)
     in_time = in_frame / fps
 
-    out_time = min(info.duration, (out_frame + 1) / fps)
+    out_time = min(info.video_duration, (out_frame + 1) / fps)
     if out_time <= in_time:
-        out_time = min(info.duration, in_time + info.frame_duration)
+        out_time = min(info.video_duration, in_time + info.frame_duration)
     return in_time, out_time
 
 
 def probe_media(path: str) -> MediaInfo:
     if not FFPROBE:
         raise RuntimeError("ffprobe was not found. Install FFmpeg and restart ClipTrim.")
-    cp = run_hidden(
-        [FFPROBE, "-v", "error", "-show_streams", "-show_format", "-of", "json", path],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        cp = run_hidden(
+            [FFPROBE, "-v", "error", "-show_streams", "-show_format", "-of", "json", path],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=MEDIA_PROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"ffprobe did not finish within {MEDIA_PROBE_TIMEOUT_SECONDS} seconds."
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"ffprobe could not be started: {exc}") from exc
     if cp.returncode:
         raise RuntimeError(cp.stderr.strip() or "ffprobe failed")
     data = json.loads(cp.stdout)
@@ -491,33 +566,57 @@ def frame_snap(t: float, info: MediaInfo) -> float:
     return max(0.0, min(info.duration, frame / info.fps))
 
 
+def snap_out_boundary(t: float, info: MediaInfo) -> float:
+    """Snap an exclusive Out boundary without dropping a partial final frame."""
+    maximum = max(0.0, min(info.duration, info.video_duration))
+    boundary = max(0.0, min(maximum, t))
+    out_frame = _out_frame_index_for_boundary(boundary, info)
+    return min(maximum, (out_frame + 1) * info.frame_duration)
+
+
+def last_frame_start_before(boundary: float, info: MediaInfo) -> float:
+    """Return the start time of the final actual frame before a boundary."""
+    fps = max(info.fps, 1e-6)
+    boundary = max(0.0, min(boundary, info.video_duration))
+    frame_index = int(math.floor(boundary * fps - 1e-6))
+    frame_index = max(0, min(info.frame_count - 1, frame_index))
+    return frame_index / fps
+
+
 def is_keyframe_at(path: str, t: float, fps: float) -> bool:
+    if not FFPROBE:
+        return False
     if t <= 0.5 / fps:
         return True
     start = max(0.0, t - max(0.5, 8.0 / fps))
     length = max(1.0, 16.0 / fps)
-    cp = run_hidden(
-        [
-            FFPROBE,
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-skip_frame",
-            "nokey",
-            "-read_intervals",
-            f"{start:.9f}%+{length:.9f}",
-            "-show_entries",
-            "frame=best_effort_timestamp_time,pts_time",
-            "-of",
-            "json",
-            path,
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    try:
+        cp = run_hidden(
+            [
+                FFPROBE,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-skip_frame",
+                "nokey",
+                "-read_intervals",
+                f"{start:.9f}%+{length:.9f}",
+                "-show_entries",
+                "frame=best_effort_timestamp_time,pts_time",
+                "-of",
+                "json",
+                path,
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=KEYFRAME_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log_exception(f"Keyframe probe failed for {path} at {t:.6f}s", exc)
+        return False
     if cp.returncode:
         return False
     try:
@@ -537,34 +636,59 @@ def is_keyframe_at(path: str, t: float, fps: float) -> bool:
 def make_thumbnail(path: str, t: float) -> QImage:
     if not FFMPEG:
         return QImage()
-    cp = run_hidden(
-        [
-            FFMPEG,
-            "-v",
-            "error",
-            "-ss",
-            f"{t:.9f}",
-            "-i",
-            path,
-            "-map",
-            "0:v:0",
-            "-frames:v",
-            "1",
-            "-vf",
-            "scale=640:-2",
-            "-f",
-            "image2pipe",
-            "-vcodec",
-            "png",
-            "-",
-        ],
-        capture_output=True,
-        timeout=12,
-    )
+    try:
+        cp = run_hidden(
+            [
+                FFMPEG,
+                "-v",
+                "error",
+                "-ss",
+                f"{t:.9f}",
+                "-i",
+                path,
+                "-map",
+                "0:v:0",
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=640:-2",
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "png",
+                "-",
+            ],
+            capture_output=True,
+            timeout=THUMBNAIL_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log_exception(f"Thumbnail extraction failed for {path} at {t:.6f}s", exc)
+        return QImage()
     img = QImage()
     if cp.returncode == 0:
         img.loadFromData(cp.stdout, "PNG")
     return img
+
+
+def finalize_export_file(temp_output: Path, output_path: Path):
+    """Install a completed export without exposing a partially copied destination."""
+    try:
+        os.replace(temp_output, output_path)
+        return
+    except OSError as exc:
+        log(
+            f"Could not atomically move completed export to {output_path}: {exc}; "
+            "copying through a destination-side staging file",
+            "WARN",
+        )
+
+    staged_output = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.part")
+    try:
+        shutil.copy2(temp_output, staged_output)
+        os.replace(staged_output, output_path)
+        remove_file(temp_output, "copied export intermediate")
+    finally:
+        remove_file(staged_output, "incomplete destination export")
 
 
 class ExportWorker(QObject):
@@ -691,16 +815,7 @@ class ExportWorker(QObject):
                     raise RuntimeError(cp.stderr.strip()[-2400:] or "FFmpeg export failed.")
                 mode_parts = ["video -> H.264 High (CRF 10)", "audio -> AAC-LC 320 kb/s" if self.info.audio_codec else "no audio"]
 
-            try:
-                os.replace(temp_output, output_path)
-            except OSError as exc:
-                log(
-                    f"Could not atomically move completed export to {output_path}: {exc}; "
-                    "copying it to the destination instead",
-                    "WARN",
-                )
-                shutil.copy2(temp_output, output_path)
-                remove_file(temp_output, "copied export intermediate")
+            finalize_export_file(temp_output, output_path)
             self.finished.emit(self.output, ", ".join(mode_parts))
         except Exception as exc:
             log_exception("Export worker failed", exc)
@@ -782,6 +897,8 @@ class ScrubCacheWorker(QObject):
                 vf,
                 "-q:v",
                 "8",
+                "-frames:v",
+                str(SCRUB_CACHE_MAX_FRAMES),
                 "-start_number",
                 "0",
                 str(self.cache_dir / "frame_%08d.jpg"),
@@ -1159,11 +1276,7 @@ class Timeline(QWidget):
         """Return the timestamp of the final actual video frame before boundary."""
         if not self.info:
             return 0.0
-        fps = max(self.info.fps, 1e-6)
-        boundary = max(0.0, min(boundary, self.info.video_duration))
-        frame_index = int(math.floor(boundary * fps - 1e-6))
-        frame_index = max(0, min(self.full_last_frame_index(), frame_index))
-        return frame_index / fps
+        return last_frame_start_before(boundary, self.info)
 
     def fit_pps_for_width(self, width: int | None = None) -> float:
         if not self.info:
@@ -1176,10 +1289,13 @@ class Timeline(QWidget):
 
     def set_media(self, info: MediaInfo, in_time=0.0, out_time=None):
         self.info = info
-        self.in_time = frame_snap(in_time, info)
-        self.out_time = frame_snap(out_time if out_time is not None else info.duration, info)
+        self.in_time = min(frame_snap(in_time, info), self.full_last_frame_time())
+        self.out_time = snap_out_boundary(
+            out_time if out_time is not None else info.video_duration,
+            info,
+        )
         if self.out_time <= self.in_time:
-            self.out_time = min(info.duration, self.in_time + info.frame_duration)
+            self.out_time = min(info.video_duration, self.in_time + info.frame_duration)
         self.playhead = self.in_time
         self.pps = self.fit_pps_for_width()
         self.scroll_px = 0.0
@@ -1576,14 +1692,13 @@ class Timeline(QWidget):
             t = self.snap_drag_time(t, e.modifiers())
             fd = self.info.frame_duration
             if self.drag_mode == "in":
-                t = min(t, self.out_time - fd)
+                t = min(t, self.last_frame_before(self.out_time))
                 t = max(0.0, t)
                 self.in_time = t
                 self.inChanged.emit(t, False)
             else:
                 last_frame_t = max(t, self.in_time)
-                t = min(self.info.duration, last_frame_t + fd)
-                t = max(t, self.in_time + fd)
+                t = min(self.info.video_duration, last_frame_t + fd)
                 self.out_time = t
                 self.outChanged.emit(t, False)
             self.update()
@@ -1715,6 +1830,7 @@ class DropOpenArea(QWidget):
 
 class LauncherWindow(QMainWindow):
     filesChosen = Signal(list)
+    quitRequested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -1754,12 +1870,14 @@ class LauncherWindow(QMainWindow):
     def keyPressEvent(self, e: QKeyEvent):
         if e.key() == Qt.Key.Key_Escape:
             log("Escape pressed on launcher; closing ClipTrim")
-            app = QApplication.instance()
-            if app is not None:
-                app.quit()
+            self.quitRequested.emit()
             e.accept()
             return
         super().keyPressEvent(e)
+
+    def closeEvent(self, e):
+        self.quitRequested.emit()
+        e.ignore()
 
     def open_dialog(self):
         if self._file_dialog_open:
@@ -1788,6 +1906,7 @@ class LauncherWindow(QMainWindow):
 
 class MainWindow(QMainWindow):
     backRequested = Signal()
+    quitRequested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -1836,6 +1955,9 @@ class MainWindow(QMainWindow):
         self._scrub_cache_fps = 0.0
         self._scrub_cache_thread: QThread | None = None
         self._scrub_cache_worker: ScrubCacheWorker | None = None
+        self._retired_scrub_caches: dict[
+            QThread, tuple[ScrubCacheWorker | None, Path | None]
+        ] = {}
         self._scrub_cache_generation = 0
         self._scrub_cache_result: tuple[bool, str, int, str] | None = None
         self._scrub_ram: OrderedDict[int, QImage] = OrderedDict()
@@ -1908,10 +2030,10 @@ class MainWindow(QMainWindow):
         self.player.mediaStatusChanged.connect(self.on_media_status)
         self.player.errorOccurred.connect(self.on_player_error)
 
-    def load_files(self, paths: list[str]):
+    def load_files(self, paths: list[str]) -> bool:
         clean = [str(Path(p).resolve()) for p in paths if Path(p).is_file()]
         if not clean:
-            return
+            return False
         self._reset_scrub_state()
         self._stop_scrub_cache()
         self.player.stop()
@@ -1921,7 +2043,7 @@ class MainWindow(QMainWindow):
         self.states.clear()
         self.files = clean
         self.file_index = 0
-        self.load_current_file()
+        return self.load_current_file()
 
     def save_state(self):
         if self.info:
@@ -1942,9 +2064,9 @@ class MainWindow(QMainWindow):
         self.file_index = new_index
         self.load_current_file()
 
-    def load_current_file(self, ignore_embedded_trim: bool = False, force_reload: bool = False):
+    def load_current_file(self, ignore_embedded_trim: bool = False, force_reload: bool = False) -> bool:
         if not (0 <= self.file_index < len(self.files)):
-            return
+            return False
         self._reset_scrub_state()
         self._stop_scrub_cache()
         path = self.files[self.file_index]
@@ -1964,7 +2086,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             log_exception(f"Failed to probe clip {path}", exc)
             QMessageBox.critical(self, APP_NAME, str(exc))
-            return
+            return False
         self.info = info
 
         state = self.states.get(path)
@@ -1972,14 +2094,14 @@ class MainWindow(QMainWindow):
         muted = state[3] if state is not None else False
 
         if ignore_embedded_trim:
-            in_time, out_time = 0.0, info.duration
+            in_time, out_time = 0.0, info.video_duration
             log("Reload requested: embedded In/Out metadata ignored for this load")
         elif state is not None:
             in_time, out_time = state[0], state[1]
         else:
             saved_frames = read_embedded_trim_frames(path, info)
             if saved_frames is None:
-                in_time, out_time = 0.0, info.duration
+                in_time, out_time = 0.0, info.video_duration
             else:
                 in_time, out_time = trim_frames_to_times(info, *saved_frames)
 
@@ -1995,6 +2117,7 @@ class MainWindow(QMainWindow):
         self.refresh_thumbnail(self.timeline.in_time)
         self.canvas.reset_view()
         self.update_time_label(self.timeline.in_time)
+        return True
 
     def persist_trim_metadata(self):
         if not self.info:
@@ -2032,13 +2155,9 @@ class MainWindow(QMainWindow):
             return
 
         path = self.info.path
-        old_state = self.states.get(path)
-        if old_state is None:
-            volume, muted = self.timeline.volume, self.timeline.muted
-        else:
-            volume, muted = old_state[2], old_state[3]
+        volume, muted = self.timeline.volume, self.timeline.muted
 
-        self.states[path] = (0.0, self.info.duration, volume, muted)
+        self.states[path] = (0.0, self.info.video_duration, volume, muted)
         self.load_current_file(ignore_embedded_trim=True, force_reload=True)
 
     def refresh_thumbnail(self, t: float):
@@ -2081,9 +2200,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "canvas"):
             self.canvas.clear_scrub_frame()
 
-    def _stop_scrub_cache(self):
+    def _stop_scrub_cache(self) -> bool:
+        """Cancel the current cache, retaining a rare slow thread until it exits."""
         worker = self._scrub_cache_worker
         thread = self._scrub_cache_thread
+        cache_dir = self._scrub_cache_dir
         old_generation = self._scrub_cache_generation
         self._scrub_cache_generation += 1
         self._scrub_cache_result = None
@@ -2109,21 +2230,44 @@ class MainWindow(QMainWindow):
                     if not thread.wait(3000):
                         log(
                             f"Scrub cache QThread generation {old_generation} is still running. "
-                            "Keeping its objects alive instead of destroying a running QThread.",
+                            "Retiring it until its finished signal arrives.",
                             "ERROR",
                         )
-                        return
+                        self._retired_scrub_caches[thread] = (worker, cache_dir)
+                        self._scrub_cache_worker = None
+                        self._scrub_cache_thread = None
+                        self._scrub_cache_dir = None
+                        self._scrub_cache_fps = 0.0
+                        self._scrub_ram.clear()
+                        self._scrub_ram_bytes = 0
+                        return False
             log(f"Scrub cache QThread generation {old_generation} stopped")
 
         self._scrub_cache_worker = None
         self._scrub_cache_thread = None
-        cache_dir = self._scrub_cache_dir
         self._scrub_cache_dir = None
         self._scrub_cache_fps = 0.0
         self._scrub_ram.clear()
         self._scrub_ram_bytes = 0
         if cache_dir:
             remove_tree(cache_dir, "clip scrub cache")
+        return True
+
+    def _wait_for_retired_scrub_caches(self, timeout_ms: int) -> bool:
+        """Wait a bounded time for every retained cache thread to finish."""
+        deadline = time.monotonic() + max(0, timeout_ms) / 1000.0
+        for thread, (worker, cache_dir) in list(self._retired_scrub_caches.items()):
+            if worker:
+                worker.cancel()
+            thread.requestInterruption()
+            thread.quit()
+            remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+            if thread.isRunning() and (remaining_ms <= 0 or not thread.wait(remaining_ms)):
+                return False
+            self._retired_scrub_caches.pop(thread, None)
+            if cache_dir:
+                remove_tree(cache_dir, "retired clip scrub cache")
+        return True
 
     def _start_scrub_cache(self, info: MediaInfo):
         self._stop_scrub_cache()
@@ -2168,10 +2312,10 @@ class MainWindow(QMainWindow):
             f"Scrub cache done signal received: generation={generation}, ok={ok}, "
             f"current_generation={self._scrub_cache_generation}, dir={cache_path}"
         )
-        self._scrub_cache_result = (ok, message, generation, cache_dir)
         if generation != self._scrub_cache_generation or cache_path != self._scrub_cache_dir:
             log(f"Ignoring stale scrub cache result for generation {generation}", "WARN")
             return
+        self._scrub_cache_result = (ok, message, generation, cache_dir)
         log(f"Scrub cache generation {generation} finished FFmpeg work; waiting for QThread shutdown")
 
     def _on_scrub_cache_thread_finished(self, generation: int, thread: QThread):
@@ -2179,6 +2323,14 @@ class MainWindow(QMainWindow):
             f"Scrub cache QThread finished signal: generation={generation}, "
             f"is_current={thread is self._scrub_cache_thread}"
         )
+        retired = self._retired_scrub_caches.pop(thread, None)
+        if retired is not None:
+            _, cache_dir = retired
+            if cache_dir:
+                remove_tree(cache_dir, "retired clip scrub cache")
+            log(f"Retired scrub QThread generation {generation} stopped")
+            return
+
         if thread is not self._scrub_cache_thread:
             log(f"Finished scrub QThread generation {generation} is no longer current", "WARN")
             return
@@ -2515,7 +2667,7 @@ class MainWindow(QMainWindow):
             return
         self._playback_ended_at_out = False
         t = frame_snap(self.player.position() / 1000.0, self.info)
-        t = min(t, self.timeline.out_time - self.info.frame_duration)
+        t = min(t, self.timeline.last_frame_before(self.timeline.out_time))
         self.timeline.in_time = max(0.0, t)
         self.persist_trim_metadata()
         self.refresh_thumbnail(self.timeline.in_time)
@@ -2527,7 +2679,7 @@ class MainWindow(QMainWindow):
         self._playback_ended_at_out = False
         t = frame_snap(self.player.position() / 1000.0, self.info)
         t = max(t, self.timeline.in_time)
-        self.timeline.out_time = min(self.info.duration, t + self.info.frame_duration)
+        self.timeline.out_time = min(self.info.video_duration, t + self.info.frame_duration)
         self.timeline.update()
         self.persist_trim_metadata()
 
@@ -2658,6 +2810,12 @@ class MainWindow(QMainWindow):
         self._shuttle_rate = rate
         self._shuttle_mode = mode
         self._playback_ended_at_out = False
+
+        first, last = self.timeline.playhead_bounds()
+        if self.timeline.playhead < first:
+            self.seek(first)
+        elif self.timeline.playhead > last:
+            self.seek(last)
 
         if direction > 0:
             self._reverse_shuttle_timer.stop()
@@ -2928,14 +3086,12 @@ class MainWindow(QMainWindow):
         super().keyReleaseEvent(e)
 
     def closeEvent(self, e):
-        self.player.stop()
-        self._reset_scrub_state()
-        self._stop_scrub_cache()
         if self.export_thread:
             QMessageBox.warning(self, APP_NAME, "An export is still running. Close again after it finishes.")
             e.ignore()
             return
-        e.accept()
+        self.quitRequested.emit()
+        e.ignore()
 
 
 def main():
@@ -2946,6 +3102,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")
+    app.setQuitOnLastWindowClosed(False)
     if not FFMPEG or not FFPROBE:
         QMessageBox.critical(
             None,
@@ -2957,8 +3114,7 @@ def main():
     editor = MainWindow()
 
     def open_editor(paths: list[str]):
-        editor.load_files(paths)
-        if editor.info is None:
+        if not editor.load_files(paths):
             launcher.show()
             launcher.raise_()
             launcher.activateWindow()
@@ -2966,7 +3122,7 @@ def main():
         editor.show()
         editor.raise_()
         editor.activateWindow()
-        launcher.close()
+        launcher.hide()
 
     def back_to_launcher():
         editor.hide()
@@ -2974,22 +3130,42 @@ def main():
         launcher.raise_()
         launcher.activateWindow()
 
-    launcher.filesChosen.connect(open_editor)
-    editor.backRequested.connect(back_to_launcher)
-
-
     sigint_pump = QTimer()
     sigint_pump.setInterval(100)
     sigint_pump.timeout.connect(lambda: None)
     sigint_pump.start()
 
     previous_sigint = signal.getsignal(signal.SIGINT)
+    quit_after_export = False
+
+    def request_clean_quit():
+        nonlocal quit_after_export
+        export_thread = editor.export_thread
+        if export_thread and export_thread.isRunning():
+            if not quit_after_export:
+                quit_after_export = True
+                export_thread.finished.connect(request_clean_quit)
+                if not export_thread.isRunning():
+                    QTimer.singleShot(0, request_clean_quit)
+                log("Waiting for the active export before closing ClipTrim", "WARN")
+            return
+        editor._reset_scrub_state()
+        editor._stop_scrub_cache()
+        if editor._wait_for_retired_scrub_caches(1000):
+            app.quit()
+            return
+        log("Waiting for a retired scrub-cache thread before quitting", "WARN")
+        QTimer.singleShot(250, request_clean_quit)
 
     def handle_sigint(signum, frame):
-        log("Ctrl+C received; closing ClipTrim")
-        app.quit()
+        log("Ctrl+C received; requesting clean ClipTrim shutdown")
+        request_clean_quit()
 
     signal.signal(signal.SIGINT, handle_sigint)
+    launcher.filesChosen.connect(open_editor)
+    launcher.quitRequested.connect(request_clean_quit)
+    editor.backRequested.connect(back_to_launcher)
+    editor.quitRequested.connect(request_clean_quit)
 
     def about_to_quit():
         log("Qt application shutdown requested", "DEBUG")
@@ -2997,6 +3173,8 @@ def main():
             editor.player.stop()
             editor._reset_scrub_state()
             editor._stop_scrub_cache()
+            if not editor._wait_for_retired_scrub_caches(15000):
+                log("A scrub-cache thread did not stop before Qt shutdown", "ERROR")
         except Exception as exc:
             log_exception("Error during Qt shutdown cleanup", exc)
         signal.signal(signal.SIGINT, previous_sigint)

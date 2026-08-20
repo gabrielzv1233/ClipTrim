@@ -3,7 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 title ClipTrim Development Setup
 
-set "PYTHON_VERSION=3.14"
+set "PYTHON_VERSION=3.14.7"
 set "VENV_PYTHON=.venv\Scripts\python.exe"
 set "UV_CMD="
 set "FFMPEG_CMD="

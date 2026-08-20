@@ -218,16 +218,18 @@ The planned configuration system will move these user-facing values into real fi
 ClipTrim was originally developed and tested with:
 
 - Windows 11
-- Python **3.14.7** (`.python-version` targets Python 3.14)
+- Python **3.14.7** (`.python-version` pins the tested patch release)
 - `uv` (bootstrapped by `setup.bat` if it is missing)
 - PySide6 **6.11.2**
 - Nuitka **4.1.3**
 - FFmpeg and FFprobe on `PATH` (`setup.bat` installs Gyan.FFmpeg through WinGet when needed)
 
-The project declares Python `>=3.14`. Python dependencies are defined in `pyproject.toml` and locked in `uv.lock`:
+The project declares Python `>=3.14`. Runtime and development dependencies are defined separately in `pyproject.toml` and locked in `uv.lock`:
 
 ```text
 pyside6>=6.11.2
+
+[development]
 nuitka[all]>=4.1.3
 ```
 
@@ -271,7 +273,11 @@ From the project root:
 buildtools\build_exe.bat
 ```
 
-The build script prepares dependencies, generates `icon.ico` from `icon.svg`, builds the Nuitka standalone app, bundles FFmpeg/FFprobe, and creates the final distributable at `build\ClipTrim`.
+The build script prepares dependencies, generates `icon.ico` from `icon.svg`, builds the Nuitka standalone app, bundles the validated FFmpeg/FFprobe pair and required license material, and creates the final distributable at `build\ClipTrim`.
+
+The packaged root includes `LICENSE` and `THIRD_PARTY_NOTICES.md`; copied license and attribution material plus the exact FFmpeg build inventory are under `licenses/`. The build stops if a pinned runtime/tool version, binary hash, plugin allowlist, or legal file no longer matches the notice inventory.
+
+The bundled Gyan FFmpeg executables are static GPLv3 builds. Before publishing a binary release, follow the corresponding-source action documented in `THIRD_PARTY_NOTICES.md`; the vendor README and upstream links alone do not complete that distribution obligation.
 
 The final folder keeps `ClipTrim.exe` in the root while dependencies stay in subfolders. With Nuitka 4.1.3, which does not expose `--put-runtime-files-in`, the build uses a small native root launcher and places the compiled application under `runtime/` instead.
 
@@ -282,9 +288,13 @@ The final folder keeps `ClipTrim.exe` in the root while dependencies stay in sub
 | `cliptrim.py` | Main app, UI, playback, trim state, caching, probing, and export logic. |
 | `icon.af` | Editable Affinity Designer source for the app icon. |
 | `icon.svg` | Canonical vector icon used by the build. |
-| `pyproject.toml` | Project metadata and direct dependencies. |
+| `pyproject.toml` | Project metadata plus runtime and development dependency groups. |
 | `uv.lock` | Locked Python dependencies. |
-| `.python-version` | Preferred development Python version. |
+| `.python-version` | Pinned development Python version. |
+| `THIRD_PARTY_NOTICES.md` | Runtime/build dependency inventory, attribution, and source index. |
+| `licenses/` | License texts committed for redistribution by the build. |
+| `buildtools/update_qt_notices.ps1` | Regenerates the pinned offline Qt component-attribution bundle. |
+| `buildtools/update_python_licenses.ps1` | Refreshes exact standalone-Python and platform runtime license files. |
 | `setup.bat` | Creates/checks the development environment. |
 | `run.bat` | Runs ClipTrim from source. |
 | `buildtools/build_exe.bat` | Main packaging script. |
