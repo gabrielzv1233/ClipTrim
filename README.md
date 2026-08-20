@@ -299,7 +299,9 @@ The final folder keeps `ClipTrim.exe` in the root while dependencies stay in sub
 | `licenses/` | Source license texts copied into the packaged `legal/licenses/` folder. |
 | `setup.bat` | Creates/checks the development environment. |
 | `run.bat` | Runs ClipTrim from source. |
-| `buildtools/build_exe.bat` | Main packaging script. |
+| `buildtools/build_exe.bat` | Small compatibility launcher for the PowerShell build. |
+| `buildtools/build.ps1` | Main build orchestration in execution order. |
+| `buildtools/modules/` | Imported modules for dependencies, compilation, packaging, and legal files. |
 | `buildtools/build_icon.py` | Generates the multi-size Windows icon. |
 | `buildtools/cliptrim_launcher.c` | Native root launcher for the packaged runtime. |
 | `buildtools/cliptrim_launcher.rc` | Windows resources for that launcher. |
