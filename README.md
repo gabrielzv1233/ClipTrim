@@ -298,3 +298,22 @@ The final folder keeps `ClipTrim.exe` in the root while dependencies stay in sub
 | `build/ClipTrim/` | Generated distributable. |
 
 Build products, generated icons, virtual environments, and runtime working data are ignored by Git. Keep both `icon.af` and `icon.svg`: the first is the editable design source; the second is the reproducible build source.
+
+---
+
+<br>
+<div align="center">
+<a href="LICENSE">
+  <img src="https://img.shields.io/badge/License-GPL--3.0--only-blue.svg" alt="GPL-3.0-only" style="scale:150%;">
+</a>
+<br>
+<br>
+
+ClipTrim is free and open-source software licensed under the  
+**GNU General Public License v3.0 only**.
+
+Copyright © 2026 **gabrielzv1233**
+
+See [`LICENSE`](LICENSE) for the full license terms.
+
+</div>
