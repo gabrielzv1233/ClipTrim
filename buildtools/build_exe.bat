@@ -270,100 +270,23 @@ if errorlevel 1 exit /b 1
 
 if exist "%STAGING%" rmdir /s /q "%STAGING%"
 
-for %%D in (bin config licenses) do (
+for %%D in (bin config) do (
     if not exist "%DIST%\%%D" mkdir "%DIST%\%%D"
 )
 copy /y "buildtools\icon.ico" "%DIST%\icon.ico" >nul
 if errorlevel 1 exit /b 1
-copy /y "LICENSE" "%DIST%\LICENSE" >nul
-if errorlevel 1 exit /b 1
-copy /y "THIRD_PARTY_NOTICES.md" "%DIST%\THIRD_PARTY_NOTICES.md" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\Apache-2.0.txt" "%DIST%\licenses\Apache-2.0.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\libffi-LICENSE.txt" "%DIST%\licenses\libffi-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\liblzma-LICENSE.txt" "%DIST%\licenses\liblzma-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\libmpdec-LICENSE.txt" "%DIST%\licenses\libmpdec-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\Microsoft-Visual-C-Runtime-2015-2022-License.docx" "%DIST%\licenses\Microsoft-Visual-C-Runtime-2015-2022-License.docx" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\OpenSSL-3-LICENSE.txt" "%DIST%\licenses\OpenSSL-3-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\Unicode-3.0-LICENSE.txt" "%DIST%\licenses\Unicode-3.0-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\Astral-python-build-standalone-LICENSE.txt" "%DIST%\licenses\Astral-python-build-standalone-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "licenses\Qt-6.11.2-THIRD-PARTY-NOTICES.txt" "%DIST%\licenses\Qt-6.11.2-THIRD-PARTY-NOTICES.txt" >nul
-if errorlevel 1 exit /b 1
-
-set "PYTHON_LICENSE="
-for /f "delims=" %%F in ('python -c "import sys; from pathlib import Path; print(Path(sys.base_prefix) / 'LICENSE.txt')"') do if not defined PYTHON_LICENSE set "PYTHON_LICENSE=%%F"
-if not defined PYTHON_LICENSE (
-    echo Could not locate the CPython license file.
-    exit /b 1
-)
-if not exist "!PYTHON_LICENSE!" (
-    echo CPython license file does not exist: !PYTHON_LICENSE!
-    exit /b 1
-)
-copy /y "!PYTHON_LICENSE!" "%DIST%\licenses\CPython-%PYTHON_VERSION%-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-
-set "NUITKA_LICENSE_DIR="
-for /f "delims=" %%D in ('python -c "import importlib.metadata as m; from pathlib import Path; d=m.distribution('Nuitka'); print(next(Path(d.locate_file(p)).parent for p in d.files if p.name == 'LICENSE-RUNTIME.txt'))"') do if not defined NUITKA_LICENSE_DIR set "NUITKA_LICENSE_DIR=%%D"
-if not defined NUITKA_LICENSE_DIR (
-    echo Could not locate Nuitka's license files.
-    exit /b 1
-)
-copy /y "!NUITKA_LICENSE_DIR!\LICENSE.txt" "%DIST%\licenses\Nuitka-%NUITKA_VERSION%-LICENSE.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "!NUITKA_LICENSE_DIR!\LICENSE-RUNTIME.txt" "%DIST%\licenses\Nuitka-%NUITKA_VERSION%-LICENSE-RUNTIME.txt" >nul
-if errorlevel 1 exit /b 1
-copy /y "!NUITKA_LICENSE_DIR!\NOTICE.txt" "%DIST%\licenses\Nuitka-%NUITKA_VERSION%-NOTICE.txt" >nul
-if errorlevel 1 exit /b 1
-
 copy /y "!FFMPEG_PATH!" "%DIST%\bin\ffmpeg.exe" >nul
 if errorlevel 1 exit /b 1
 copy /y "!FFPROBE_PATH!" "%DIST%\bin\ffprobe.exe" >nul
 if errorlevel 1 exit /b 1
-copy /y "!FFMPEG_ROOT!\LICENSE" "%DIST%\licenses\FFmpeg-9.0-LICENSE.txt" >nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "buildtools\modules\package_licenses.ps1" ^
+  -DistributionDirectory "%DIST%" ^
+  -PythonExecutable "%cd%\.venv\Scripts\python.exe" ^
+  -PythonVersion "%PYTHON_VERSION%" ^
+  -NuitkaVersion "%NUITKA_VERSION%" ^
+  -FfmpegRoot "!FFMPEG_ROOT!" ^
+  -ZigRoot "!ZIG_ROOT!."
 if errorlevel 1 exit /b 1
-copy /y "!FFMPEG_ROOT!\README.txt" "%DIST%\licenses\FFmpeg-9.0-README.txt" >nul
-if errorlevel 1 exit /b 1
-
-if defined ZIG_ROOT (
-    copy /y "!ZIG_ROOT!LICENSE" "%DIST%\licenses\Zig-%ZIG_VERSION%-LICENSE.txt" >nul
-    if errorlevel 1 exit /b 1
-    copy /y "!ZIG_ROOT!lib\libc\mingw\COPYING" "%DIST%\licenses\mingw-w64-COPYING.txt" >nul
-    if errorlevel 1 exit /b 1
-)
-
-for %%F in (
-    "%DIST%\LICENSE"
-    "%DIST%\THIRD_PARTY_NOTICES.md"
-    "%DIST%\licenses\Apache-2.0.txt"
-    "%DIST%\licenses\Astral-python-build-standalone-LICENSE.txt"
-    "%DIST%\licenses\CPython-%PYTHON_VERSION%-LICENSE.txt"
-    "%DIST%\licenses\FFmpeg-9.0-LICENSE.txt"
-    "%DIST%\licenses\FFmpeg-9.0-README.txt"
-    "%DIST%\licenses\libffi-LICENSE.txt"
-    "%DIST%\licenses\liblzma-LICENSE.txt"
-    "%DIST%\licenses\libmpdec-LICENSE.txt"
-    "%DIST%\licenses\Microsoft-Visual-C-Runtime-2015-2022-License.docx"
-    "%DIST%\licenses\Nuitka-%NUITKA_VERSION%-LICENSE.txt"
-    "%DIST%\licenses\Nuitka-%NUITKA_VERSION%-LICENSE-RUNTIME.txt"
-    "%DIST%\licenses\Nuitka-%NUITKA_VERSION%-NOTICE.txt"
-    "%DIST%\licenses\OpenSSL-3-LICENSE.txt"
-    "%DIST%\licenses\Qt-6.11.2-THIRD-PARTY-NOTICES.txt"
-    "%DIST%\licenses\Unicode-3.0-LICENSE.txt"
-    "%DIST%\licenses\Zig-%ZIG_VERSION%-LICENSE.txt"
-    "%DIST%\licenses\mingw-w64-COPYING.txt"
-) do if not exist "%%~F" (
-    echo Required packaged legal file is missing: %%~F
-    exit /b 1
-)
 
 echo.
 echo EXE: %cd%\%DIST%\ClipTrim.exe

@@ -48,8 +48,8 @@ The standalone runtime also contains `libffi-8.dll`. libffi is copyright its
 authors and contributors and is distributed under the MIT license. The binary
 does not expose a sufficiently reliable source-version identifier; ABI 8 is
 reported here rather than asserting an unverified release number. Astral's
-unmodified build-system license is included for build provenance; its MPL-2.0
-builder code is not copied into the application runtime.
+MPL-2.0 builder code is a build-only tool and is not copied into the application
+runtime.
 
 ### Qt incorporated software
 
@@ -154,8 +154,6 @@ resources are owned by or licensed to the ClipTrim project.
 | --- | --- |
 | `LICENSE` | ClipTrim and selected Qt/PySide GPL-3.0 license text |
 | `THIRD_PARTY_NOTICES.md` | This inventory and attribution index |
-| `licenses/Apache-2.0.txt` | General Apache License 2.0 text |
-| `licenses/Astral-python-build-standalone-LICENSE.txt` | Astral builder MPL-2.0 terms (build provenance) |
 | `licenses/CPython-3.14.7-LICENSE.txt` | CPython and incorporated-software terms |
 | `licenses/libffi-LICENSE.txt` | Exact Astral 20260807 libffi copyright and MIT terms |
 | `licenses/liblzma-LICENSE.txt` | Exact Astral 20260807 XZ Utils/liblzma terms |
@@ -169,5 +167,4 @@ resources are owned by or licensed to the ClipTrim project.
 | `licenses/Nuitka-4.1.3-NOTICE.txt` | Nuitka copyright notice |
 | `licenses/FFmpeg-9.0-LICENSE.txt` | Gyan full-build GPLv3 license text |
 | `licenses/FFmpeg-9.0-README.txt` | Exact Gyan build configuration, dependencies, and source commit |
-| `licenses/Zig-0.16.0-LICENSE.txt` | Zig compiler license (build provenance) |
 | `licenses/mingw-w64-COPYING.txt` | License terms for launcher startup/runtime code |

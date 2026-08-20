@@ -6,14 +6,12 @@ $ErrorActionPreference = "Stop"
 $buildTag = "20260807"
 $baseUri = "https://raw.githubusercontent.com/astral-sh/python-build-standalone/$buildTag"
 $files = [ordered]@{
-    "LICENSE" = "Astral-python-build-standalone-LICENSE.txt"
     "LICENSE.libffi.txt" = "libffi-LICENSE.txt"
     "LICENSE.liblzma.txt" = "liblzma-LICENSE.txt"
     "LICENSE.mpdecimal.txt" = "libmpdec-LICENSE.txt"
     "LICENSE.openssl-3.txt" = "OpenSSL-3-LICENSE.txt"
 }
 $expectedHashes = @{
-    "Astral-python-build-standalone-LICENSE.txt" = "1F256ECAD192880510E84AD60474EAB7589218784B9A50BC7CEEE34C2B91F1D5"
     "libffi-LICENSE.txt" = "DEAF3A42EFFB551A5B140FA9AFEFED183A27F1341C6D1BF430D106A5E6931FC0"
     "liblzma-LICENSE.txt" = "9A4062DE0A2C388A98CF35A35D348B62FA97C838A71C3C28EE1A2D7D0A565B02"
     "libmpdec-LICENSE.txt" = "669512AF7219F58BE03A398766D7C9DA11A3B3DF9D3F05CB74C5CECA25C8DA3B"
