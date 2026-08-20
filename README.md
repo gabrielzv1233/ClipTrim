@@ -6,7 +6,7 @@ The UI is built around a video preview and a precise, zoomable timeline. Common 
 
 ### Basic controls
 
-> see [advanced controls](#advanced-controls) for bind modifiers
+> See [advanced controls](#advanced-controls) for bind modifiers
 
 | Control | Action |
 | --- | --- |
@@ -17,8 +17,8 @@ The UI is built around a video preview and a precise, zoomable timeline. Common 
 | `R` | Confirm and reload the current clip from a clean session state. |
 | `Left` / `J` | Back one frame. |
 | `Right` / `L` | Forward one frame. |
-| `1`–`9` | Jump evenly across the full source: `1` is the start, `5` the middle, and `9` the final frame. |
-| `Shift+1`–`Shift+9` | Jump to the equivalent position inside the selected In/Out range. |
+| `1` - `9` | Jump evenly across the full source: `1` is the start, `5` the middle, and `9` the final frame. |
+| `Shift+1` - `Shift+9` | Jump to the equivalent position inside the selected In/Out range. |
 | `Up` / `Down` | Volume ±5%. |
 | `M` | Toggle mute. |
 | `Enter` / `E` | Export. |
