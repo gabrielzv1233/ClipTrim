@@ -301,14 +301,6 @@ Build products, generated icons, virtual environments, and runtime working data 
 
 ---
 
-<br>
-<div align="center">
-<a href="LICENSE">
-  <img src="https://img.shields.io/badge/License-GPL--3.0--only-blue.svg" alt="GPL-3.0-only" style="scale:150%;">
-</a>
-<br>
-<br>
-
 ClipTrim is free and open-source software licensed under the  
 **GNU General Public License v3.0 only**.
 
