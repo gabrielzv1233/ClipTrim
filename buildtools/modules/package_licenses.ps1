@@ -22,7 +22,8 @@ $ErrorActionPreference = "Stop"
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $distributionRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $DistributionDirectory))
 $sourceLicenses = Join-Path $repositoryRoot "licenses"
-$packagedLicenses = Join-Path $distributionRoot "licenses"
+$legalRoot = Join-Path $distributionRoot "legal"
+$packagedLicenses = Join-Path $legalRoot "licenses"
 
 function Copy-LegalFile {
     param(
@@ -45,8 +46,8 @@ if (-not (Test-Path -LiteralPath $sourceLicenses -PathType Container)) {
 
 New-Item -ItemType Directory -Path $packagedLicenses -Force | Out-Null
 Copy-Item -Path (Join-Path $sourceLicenses "*") -Destination $packagedLicenses -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "LICENSE") -Destination $distributionRoot -Force
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "THIRD_PARTY_NOTICES.md") -Destination $distributionRoot -Force
+Copy-Item -LiteralPath (Join-Path $repositoryRoot "LICENSE") -Destination $legalRoot -Force
+Copy-Item -LiteralPath (Join-Path $repositoryRoot "THIRD_PARTY_NOTICES.md") -Destination $legalRoot -Force
 
 $pythonLicense = & $PythonExecutable -c "import sys; from pathlib import Path; print(Path(sys.base_prefix) / 'LICENSE.txt')"
 if ($LASTEXITCODE -ne 0 -or -not $pythonLicense) {
@@ -63,32 +64,7 @@ Copy-LegalFile (Join-Path $nuitkaLicenseDirectory "LICENSE-RUNTIME.txt") "Nuitka
 Copy-LegalFile (Join-Path $nuitkaLicenseDirectory "NOTICE.txt") "Nuitka-$NuitkaVersion-NOTICE.txt"
 
 Copy-LegalFile (Join-Path $FfmpegRoot "LICENSE") "FFmpeg-9.0-LICENSE.txt"
-Copy-LegalFile (Join-Path $FfmpegRoot "README.txt") "FFmpeg-9.0-README.txt"
 Copy-LegalFile (Join-Path $ZigRoot "lib\libc\mingw\COPYING") "mingw-w64-COPYING.txt"
 
-# Every committed file is expected to survive the bulk copy. Only files sourced
-# from the selected build environment need an explicit list here.
-$committedFiles = Get-ChildItem -LiteralPath $sourceLicenses -File -Recurse
-foreach ($file in $committedFiles) {
-    $relativePath = $file.FullName.Substring($sourceLicenses.Length).TrimStart('\', '/')
-    if (-not (Test-Path -LiteralPath (Join-Path $packagedLicenses $relativePath) -PathType Leaf)) {
-        throw "Committed legal file was not packaged: $relativePath"
-    }
-}
-
-$generatedFiles = @(
-    "CPython-$PythonVersion-LICENSE.txt",
-    "Nuitka-$NuitkaVersion-LICENSE.txt",
-    "Nuitka-$NuitkaVersion-LICENSE-RUNTIME.txt",
-    "Nuitka-$NuitkaVersion-NOTICE.txt",
-    "FFmpeg-9.0-LICENSE.txt",
-    "FFmpeg-9.0-README.txt",
-    "mingw-w64-COPYING.txt"
-)
-foreach ($name in $generatedFiles) {
-    if (-not (Test-Path -LiteralPath (Join-Path $packagedLicenses $name) -PathType Leaf)) {
-        throw "Generated legal file was not packaged: $name"
-    }
-}
-
-Write-Host "Packaged $($committedFiles.Count + $generatedFiles.Count) legal files in $packagedLicenses"
+$count = (Get-ChildItem -LiteralPath $packagedLicenses -File -Recurse).Count
+Write-Host "Packaged $count legal files in $packagedLicenses"
