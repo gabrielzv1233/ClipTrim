@@ -4,6 +4,28 @@ ClipTrim is a small, no-project video trimmer for Windows. Open a video, choose 
 
 The UI is built around a video preview and a precise, zoomable timeline. Common actions use single-key controls; modifier keys expose finer navigation, snapping, shuttle playback, and volume control.
 
+### Basic controls
+
+> see [advanced controls](#advanced-controls) for bind modifiers
+
+| Control | Action |
+| --- | --- |
+| `Space` | Play/pause. |
+| `K` | Play/pause when tapped; also used for slow shuttle playback. |
+| `I` / `[` | Set and immediately save In. |
+| `O` / `]` | Set and immediately save Out. |
+| `R` | Confirm and reload the current clip from a clean session state. |
+| `Left` / `J` | Back one frame. |
+| `Right` / `L` | Forward one frame. |
+| `1`–`9` | Jump evenly across the full source: `1` is the start, `5` the middle, and `9` the final frame. |
+| `Shift+1`–`Shift+9` | Jump to the equivalent position inside the selected In/Out range. |
+| `Up` / `Down` | Volume ±5%. |
+| `M` | Toggle mute. |
+| `Enter` / `E` | Export. |
+| `Esc` | Return to launcher. |
+| `H` | Toggle the editor HUD. |
+| `0` | Reset preview zoom and pan. |
+| `F11` / `Alt+Enter` | Toggle borderless fullscreen. |
 ## Requirements
 
 ### Packaged app
@@ -37,27 +59,6 @@ ClipTrim.exe "C:\Users\Default\Downloads\video.mp4"
 ```
 
 Cancelling the initial file chooser or pressing `Esc` in the launcher exits ClipTrim. `Esc` in the editor returns to the launcher.
-
-### Basic controls
-
-| Control | Action |
-| --- | --- |
-| `Space` | Play/pause. |
-| `K` | Play/pause when tapped; also used for slow shuttle playback. |
-| `I` / `[` | Set and immediately save In. |
-| `O` / `]` | Set and immediately save Out. |
-| `R` | Confirm and reload the current clip from a clean session state. |
-| `Left` / `J` | Back one frame. |
-| `Right` / `L` | Forward one frame. |
-| `1`–`9` | Jump evenly across the full source: `1` is the start, `5` the middle, and `9` the final frame. |
-| `Shift+1`–`Shift+9` | Jump to the equivalent position inside the selected In/Out range. |
-| `Up` / `Down` | Volume ±5%. |
-| `M` | Toggle mute. |
-| `Enter` / `E` | Export. |
-| `Esc` | Return to launcher. |
-| `H` | Toggle the editor HUD. |
-| `0` | Reset preview zoom and pan. |
-| `F11` / `Alt+Enter` | Toggle borderless fullscreen. |
 
 ### Timeline and preview
 
